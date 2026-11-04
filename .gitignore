@@ -1,0 +1,20 @@
+# Build output
+bin/
+obj/
+publish/
+
+# IDE / user settings
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Test screenshots and local artifacts
+preview/
+*.log
+*.pdb
+
+# Local binaries (use GitHub/Gitee Releases instead)
+*.exe
