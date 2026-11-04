@@ -1,5 +1,9 @@
 # SurfCore Auto-start
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Build](https://github.com/MirLearn-perHsona/SurfCore-Auto-Start/actions/workflows/build.yml/badge.svg)](https://github.com/MirLearn-perHsona/SurfCore-Auto-Start/actions/workflows/build.yml)
+[![GitHub release](https://img.shields.io/github/v/release/MirLearn-perHsona/SurfCore-Auto-Start?display_name=tag)](https://github.com/MirLearn-perHsona/SurfCore-Auto-Start/releases)
+
 一个 Windows 小工具：**每周定时开关机** + **DeepSeek Harness / SurfCore / SnowLuma 一键启动**。
 
 界面为 600×540 的无边框小窗（展开 SurfCore 区时为 600×626），浅色简洁风格，所有开关和滚轮选择器均为自绘。
@@ -25,6 +29,22 @@
 ![主界面](docs/screenshot-main.png)
 
 ![展开界面](docs/screenshot-expanded.png)
+
+---
+
+## 下载与安装
+
+- GitHub 仓库：<https://github.com/MirLearn-perHsona/SurfCore-Auto-Start>
+- 发布页（exe 下载）：<https://github.com/MirLearn-perHsona/SurfCore-Auto-Start/releases>
+- 克隆源码：
+
+```powershell
+git clone https://github.com/MirLearn-perHsona/SurfCore-Auto-Start.git
+cd SurfCore-Auto-Start
+dotnet build SurfCoreAutoStart.csproj -c Release
+```
+
+正式使用建议把 exe 放到 `C:\SurfCoreAutoStart\`，再通过桌面快捷方式调用高权限登录任务启动，具体见下文“Windows 登录自启动”一节。
 
 ---
 
@@ -271,13 +291,15 @@ SurfCoreAutoStart/
 
 ## 发布到 Git / Releases
 
+仓库地址：<https://github.com/MirLearn-perHsona/SurfCore-Auto-Start>
+
 源码可以直接同步到 GitHub 或 Gitee。`bin/`、`obj/`、`preview/`、`.vs/`、`*.user` 已在 `.gitignore` 中忽略。
 
 ```powershell
 git init -b main
 git add .
 git commit -m "SurfCore Auto-start v1.0.0"
-git remote add origin <你的仓库地址>
+git remote add origin https://github.com/MirLearn-perHsona/SurfCore-Auto-Start.git
 git push -u origin main
 ```
 
