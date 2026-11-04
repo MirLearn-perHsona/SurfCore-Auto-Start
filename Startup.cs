@@ -6,7 +6,7 @@ internal static class StartupRegistration
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "SurfCore Auto-start";
-    private const string HighTaskName = "SurfCoreAutoStart-App";
+    internal const string HighTaskName = "SurfCoreAutoStart-App";
 
     internal static bool HighTaskExists()
     {

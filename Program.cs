@@ -45,13 +45,58 @@ internal static class Program
             if (HasFlag(args, "--guard-screenshot"))
                 return GuardScreenshotMode(args);
 
-            if (!EnsureSingleInstance())
-                return 0;
+            if (HasFlag(args, "--install"))
+                return InstallMode();
 
             // 从 H 盘、聊天工具或旧快捷方式双击时会继承 Medium 令牌。
-            // 只要高权限登录任务存在，就转交给它启动，避免用户看到“需要管理员权限”后无法使用。
-            if (!Native.IsHighIntegrity() && StartupRegistration.HighTaskExists() &&
-                StartupRegistration.RunHighTask())
+            // 已安装时直接交给高权限登录任务，避免每次启动都弹“需要管理员权限”。
+            if (!Native.IsHighIntegrity())
+            {
+                if (Installer.IsUsable && StartupRegistration.RunHighTask())
+                    return 0;
+
+                if (Installer.RequestElevatedInstall())
+                    return 0;
+
+                // 用户取消 UAC。只在确实需要安装时提示一次，不进入主界面。
+                MessageBox.Show(
+                    "首次运行或修复安装需要管理员权限，用来创建开机任务和桌面快捷方式。\n\n" +
+                    "已取消，本次没有启动。",
+                    "SurfCore Auto-start", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return 0;
+            }
+
+            // 高权限实例负责自愈：缺失的安装文件、开机任务、桌面快捷方式都会在这里补上。
+            var wasInstalled = Installer.IsInstalledApp;
+            try
+            {
+                Installer.EnsureHighEnvironment();
+            }
+            catch (Exception ex)
+            {
+                Log.Error("初始化安装环境失败", ex);
+                MessageBox.Show("初始化失败：" + ex.Message, "SurfCore Auto-start",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return 1;
+            }
+
+            if (!wasInstalled)
+            {
+                // 当前是下载目录/H 盘里的副本；高权限环境准备好后交给安装目录的实例。
+                try
+                {
+                    Installer.StartInstalled();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error("启动安装目录实例失败", ex);
+                    MessageBox.Show(ex.Message, "SurfCore Auto-start",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                return 0;
+            }
+
+            if (!EnsureSingleInstance())
                 return 0;
 
             Application.Run(new MainForm());
@@ -60,6 +105,24 @@ internal static class Program
         catch (Exception ex)
         {
             Fatal(ex);
+            return 1;
+        }
+    }
+
+    /// <summary>UAC 提权后的安装入口：部署文件、强制重建任务与快捷方式，然后启动安装目录实例。</summary>
+    private static int InstallMode()
+    {
+        try
+        {
+            Installer.EnsureHighEnvironment(forceTask: true);
+            Installer.StartInstalled();
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("安装失败", ex);
+            MessageBox.Show("安装失败：" + ex.Message, "SurfCore Auto-start",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
     }

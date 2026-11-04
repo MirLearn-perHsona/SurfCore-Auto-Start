@@ -9,9 +9,9 @@
     <AssemblyName>SurfCore Auto-start</AssemblyName>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.0.1</Version>
-    <FileVersion>1.0.1.0</FileVersion>
-    <AssemblyVersion>1.0.1.0</AssemblyVersion>
+    <Version>0.1.0</Version>
+    <FileVersion>0.1.0.0</FileVersion>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
     <Product>SurfCore Auto-start</Product>
     <Company>SurfCore</Company>
     <Description>每周定时开关机 + SurfCore / SnowLuma 一键启动</Description>
@@ -25,3 +25,4 @@
     <None Update="app.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
+

@@ -310,6 +310,9 @@ internal sealed class MainForm : Form
             var local = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "SurfCore Auto-start");
+            var desktopLnk = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+                "SurfCore Auto-start.lnk");
             // 只有目录里全是本程序文件时才递归删除，避免误删用户自己的工作目录。
             var ownedDir = IsOwnedDirectory(dir);
             var pid = Environment.ProcessId;
@@ -339,6 +342,7 @@ internal sealed class MainForm : Form
                 $"del /f /q \"{dir}\\SurfCore Auto-start.*\" >nul 2>nul",
                 $"del /f /q \"{dir}\\app.ico\" >nul 2>nul",
                 $"del /f /q \"{dir}\\start.bat\" >nul 2>nul",
+                $"del /f /q \"{desktopLnk}\" >nul 2>nul",
                 $"rmdir /s /q \"{data}\" >nul 2>nul",
                 $"rmdir /s /q \"{local}\" >nul 2>nul",
                 ownedDir ? $"rmdir /s /q \"{dir}\" >nul 2>nul" : $"rmdir \"{dir}\" >nul 2>nul",
@@ -864,7 +868,7 @@ internal sealed class MainForm : Form
             g.DrawLine(pen, L(32), L(22), L(35), L(23));
         }
         Theme.DrawText(g, "SurfCore Auto-start", Theme.Font11B, Theme.Text, R(52, 11, 176, 22));
-        Theme.DrawText(g, "v1.0.1", Theme.Font8, Theme.Muted, R(226, 15, 48, 16));
+        Theme.DrawText(g, "v0.1", Theme.Font8, Theme.Muted, R(226, 15, 48, 16));
     }
 
     private void DrawStatus(Graphics g, float s)
