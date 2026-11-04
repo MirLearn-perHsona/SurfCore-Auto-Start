@@ -93,13 +93,12 @@ internal static class Native
     // WindowsPrincipal.IsInRole(Administrator) 仍可能返回 true，但进程只有 Medium，
     // 无法写 HKCU Run、AppData 或创建计划任务。
     private const uint TOKEN_QUERY = 0x0008;
-    private const int TokenIntegrityLevel = 25;
+    private const int TokenElevation = 20;
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct SID_AND_ATTRIBUTES
+    private struct TOKEN_ELEVATION
     {
-        public IntPtr Sid;
-        public uint Attributes;
+        public int TokenIsElevated;
     }
 
     [DllImport("advapi32.dll", SetLastError = true)]
@@ -108,12 +107,6 @@ internal static class Native
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool GetTokenInformation(IntPtr tokenHandle, int tokenInformationClass,
         IntPtr tokenInformation, int tokenInformationLength, out int returnLength);
-
-    [DllImport("advapi32.dll")]
-    private static extern byte GetSidSubAuthorityCount(IntPtr pSid);
-
-    [DllImport("advapi32.dll")]
-    private static extern IntPtr GetSidSubAuthority(IntPtr pSid, uint nSubAuthority);
 
     [DllImport("kernel32.dll")]
     private static extern IntPtr GetCurrentProcess();
@@ -128,15 +121,9 @@ internal static class Native
         try
         {
             if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, out token)) return false;
-            if (!GetTokenInformation(token, TokenIntegrityLevel, IntPtr.Zero, 0, out var length) && length <= 0)
-                return false;
-            info = Marshal.AllocHGlobal(length);
-            if (!GetTokenInformation(token, TokenIntegrityLevel, info, length, out _)) return false;
-            var label = Marshal.PtrToStructure<SID_AND_ATTRIBUTES>(info);
-            var count = GetSidSubAuthorityCount(label.Sid);
-            if (count == 0) return false;
-            var rid = Marshal.ReadInt32(GetSidSubAuthority(label.Sid, (uint)(count - 1)));
-            return rid >= 0x3000; // High / System
+            info = Marshal.AllocHGlobal(sizeof(int));
+            if (!GetTokenInformation(token, TokenElevation, info, sizeof(int), out _)) return false;
+            return Marshal.PtrToStructure<TOKEN_ELEVATION>(info).TokenIsElevated != 0;
         }
         catch { return false; }
         finally

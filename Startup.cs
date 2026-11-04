@@ -8,7 +8,7 @@ internal static class StartupRegistration
     private const string ValueName = "SurfCore Auto-start";
     private const string HighTaskName = "SurfCoreAutoStart-App";
 
-    private static bool HighTaskExists()
+    internal static bool HighTaskExists()
     {
         try
         {
@@ -112,7 +112,7 @@ internal static class StartupRegistration
         }
     }
 
-    public static void Remove()
+    public static bool Remove()
     {
         RemoveRunValue();
         try
@@ -126,11 +126,14 @@ internal static class StartupRegistration
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             });
-            p?.WaitForExit(3000);
+            if (p == null) return false;
+            p.WaitForExit(5000);
+            return p.ExitCode == 0 || !HighTaskExists();
         }
         catch (Exception ex)
         {
             Log.Warn("移除开机自启动任务失败: " + ex.Message);
+            return false;
         }
     }
 }

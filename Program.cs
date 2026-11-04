@@ -47,6 +47,13 @@ internal static class Program
 
             if (!EnsureSingleInstance())
                 return 0;
+
+            // 从 H 盘、聊天工具或旧快捷方式双击时会继承 Medium 令牌。
+            // 只要高权限登录任务存在，就转交给它启动，避免用户看到“需要管理员权限”后无法使用。
+            if (!Native.IsHighIntegrity() && StartupRegistration.HighTaskExists() &&
+                StartupRegistration.RunHighTask())
+                return 0;
+
             Application.Run(new MainForm());
             return 0;
         }

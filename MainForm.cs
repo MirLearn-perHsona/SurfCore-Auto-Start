@@ -287,9 +287,18 @@ internal sealed class MainForm : Form
                 MessageBoxDefaultButton.Button2) != DialogResult.Yes)
             return;
 
+        // 低权限实例既删不掉安装目录，也删不掉高权限任务；宁可中止，避免留下半卸载状态。
+        if (!IsElevated())
+        {
+            MessageBox.Show(this,
+                "卸载需要管理员权限。\n\n请关闭本窗口，双击桌面的 “SurfCore Auto-start” 快捷方式后重试。",
+                "无法卸载", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
         // 即使计划任务因权限不足删不掉，也要移除自启动项并继续清理文件与缓存。
         var taskFailed = !Scheduler.RemoveAll();
-        StartupRegistration.Remove();
+        var startupFailed = !StartupRegistration.Remove();
         _deleting = true;
         _saveTimer.Stop();
 
@@ -303,11 +312,21 @@ internal sealed class MainForm : Form
                 "SurfCore Auto-start");
             // 只有目录里全是本程序文件时才递归删除，避免误删用户自己的工作目录。
             var ownedDir = IsOwnedDirectory(dir);
+            var pid = Environment.ProcessId;
             var bat = Path.Combine(Path.GetTempPath(), "surfcore-autostart-cleanup-" + Guid.NewGuid().ToString("N") + ".cmd");
             var lines = new List<string>
             {
                 "@echo off",
-                "ping 127.0.0.1 -n 3 >nul 2>nul",
+                "ping 127.0.0.1 -n 2 >nul 2>nul",
+                "set /a n=0",
+                ":waitproc",
+                $"tasklist /FI \"PID eq {pid}\" 2>nul | find \"{pid}\" >nul",
+                "if errorlevel 1 goto delete",
+                "set /a n+=1",
+                "if %n% GEQ 240 goto delete",
+                "ping 127.0.0.1 -n 2 >nul 2>nul",
+                "goto waitproc",
+                ":delete",
                 "set /a n=0",
                 ":retryexe",
                 $"del /f /q \"{exe}\" >nul 2>nul",
@@ -319,6 +338,7 @@ internal sealed class MainForm : Form
                 ":cleanup",
                 $"del /f /q \"{dir}\\SurfCore Auto-start.*\" >nul 2>nul",
                 $"del /f /q \"{dir}\\app.ico\" >nul 2>nul",
+                $"del /f /q \"{dir}\\start.bat\" >nul 2>nul",
                 $"rmdir /s /q \"{data}\" >nul 2>nul",
                 $"rmdir /s /q \"{local}\" >nul 2>nul",
                 ownedDir ? $"rmdir /s /q \"{dir}\" >nul 2>nul" : $"rmdir \"{dir}\" >nul 2>nul",
@@ -347,6 +367,8 @@ internal sealed class MainForm : Form
         var done = "文件与缓存已删除，感谢您的使用。";
         if (taskFailed)
             done += "\n\n注意：部分 Windows 计划任务未能卸载，请以管理员身份在“任务计划程序”中卸载 SurfCoreAutoStart-Boot / SurfCoreAutoStart-Shutdown。";
+        if (startupFailed)
+            done += "\n\n注意：开机自启动任务 SurfCoreAutoStart-App 未能卸载，请在“任务计划程序”中手动删除。";
         MessageBox.Show(this, done, "SurfCore Auto-start",
             MessageBoxButtons.OK, MessageBoxIcon.Information);
         Close();
@@ -365,6 +387,7 @@ internal sealed class MainForm : Form
                 var name = Path.GetFileName(file);
                 if (name.StartsWith("SurfCore Auto-start.", StringComparison.OrdinalIgnoreCase)) continue;
                 if (string.Equals(name, "app.ico", StringComparison.OrdinalIgnoreCase)) continue;
+                if (string.Equals(name, "start.bat", StringComparison.OrdinalIgnoreCase)) continue;
                 if (string.Equals(name, "README.md", StringComparison.OrdinalIgnoreCase)) continue;
                 return false;
             }
@@ -841,7 +864,7 @@ internal sealed class MainForm : Form
             g.DrawLine(pen, L(32), L(22), L(35), L(23));
         }
         Theme.DrawText(g, "SurfCore Auto-start", Theme.Font11B, Theme.Text, R(52, 11, 176, 22));
-        Theme.DrawText(g, "v1.0", Theme.Font8, Theme.Muted, R(226, 15, 40, 16));
+        Theme.DrawText(g, "v1.0.1", Theme.Font8, Theme.Muted, R(226, 15, 48, 16));
     }
 
     private void DrawStatus(Graphics g, float s)
