@@ -15,6 +15,8 @@
     <Product>SurfCore Auto-start</Product>
     <Company>SurfCore</Company>
     <Description>每周定时开关机 + SurfCore / SnowLuma 一键启动</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Copyright>Copyright (c) 2026 YG</Copyright>
     <DebugType>none</DebugType>
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
     <InvariantGlobalization>false</InvariantGlobalization>

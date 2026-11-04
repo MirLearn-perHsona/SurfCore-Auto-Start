@@ -4,6 +4,28 @@
 
 界面为 600×540 的无边框小窗（展开 SurfCore 区时为 600×626），浅色简洁风格，所有开关和滚轮选择器均为自绘。
 
+## 项目介绍
+
+**SurfCore Auto-start** 面向长期挂着 DeepSeek Harness 和 SurfCore 的 Windows 用户，把“什么时候开机、什么时候关机、开机后把整套服务拉起来”收进一个不到 1 MB 的小窗口里。
+
+它解决三类重复操作：
+
+- **定时开关机**：按周一至周日分别设置开机/关机时间，支持睡眠/休眠唤醒，支持“每天时间一致”的快捷设置。
+- **关机保护**：关机前 1 分钟倒计时可取消；检测到最近 3 分钟有真实键鼠操作时自动跳过本次关机，避免打断正在使用电脑的人。
+- **服务一键启动**：按 DeepSeek Harness → SurfCore bridge → SnowLuma → OneBot → QQ 进程注入的正确顺序启动，并自动登录 SnowLuma 控制台。
+
+适合这些场景：
+
+- 家里/实验室的常开机器，需要按作息自动开关机；
+- 用 DeepSeek Harness + SurfCore + SnowLuma 做 QQ 机器人，希望开机后自动恢复整套环境；
+- 不希望每次都手动点“一键启动 SurfCore”、输入控制台令牌、选 QQ 进程再点加载。
+
+项目使用 C# WinForms + .NET 6，单文件发布，不需要安装额外框架（自包含版）；默认不收集、不上传任何数据，SnowLuma 控制台令牌使用 Windows DPAPI 加密后仅保存在本机。
+
+![主界面](docs/screenshot-main.png)
+
+![展开界面](docs/screenshot-expanded.png)
+
 ---
 
 ## 功能
@@ -240,6 +262,8 @@ SurfCoreAutoStart/
 ├─ BrowserInjector.cs    Edge CDP 自动登录
 ├─ Native.cs             Win32 / DPAPI P/Invoke
 ├─ app.manifest / app.ico
+├─ LICENSE               MIT License
+├─ docs/                 界面截图
 └─ README.md
 ```
 
@@ -257,6 +281,24 @@ git remote add origin <你的仓库地址>
 git push -u origin main
 ```
 
+仓库内置了 GitHub Actions 工作流 `.github/workflows/build.yml`：
+
+- push 到 `main` 或手动触发时，自动构建自包含单文件 exe，并上传为 Actions artifact；
+- push `v*` 标签时，自动创建 GitHub Release 并附带 exe。
+
+```powershell
+git tag v1.0.0
+git push origin v1.0.0
+```
+
 exe 不建议提交进仓库（体积大且每次构建都会变化）。发布时在 GitHub/Gitee 的 **Releases** 页新建版本，上传 `SurfCore Auto-start.exe`，并附上构建说明和 SHA256 即可。
 
 如果要让用户直接下载，建议使用 **自包含 publish**（README 的“构建”一节），这样对方不需要预装 .NET 6 Desktop Runtime。
+
+---
+
+## 许可证
+
+本项目使用 [MIT License](LICENSE) 开源，Copyright (c) 2026 YG。
+
+你可以自由使用、修改、分发和商用，只需保留版权声明和许可证文本。
