@@ -50,7 +50,7 @@ dotnet publish SurfCoreAutoStart.csproj -c Release -r win-x64 --self-contained t
 
 ## AI 生成声明
 
-> **本项目的代码与文档全部由 deepseek-v4.1-Flash 生成，请注意分辨。**
+> **本项目的代码与文档全权由 deepseek-v4.1-Flash 生成，请注意分辨。**
 > 可能存在错误、遗漏或不合理的设计，请自行审查、测试后再使用。
 
 ## Contributors
