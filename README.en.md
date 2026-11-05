@@ -6,7 +6,7 @@
 
 English | [简体中文](README.md)
 
-**SurfCore Auto-start** is a small Windows scheduling utility that makes the **SurfCore** plugin for DeepSeek Harness more autonomous: after boot it starts DSH, SurfCore and SnowLuma in order, signs in to the SnowLuma console automatically, and injects the selected QQ process.
+**SurfCore Auto-start** is a Windows scheduling utility that makes the **SurfCore** plugin for DeepSeek Harness more autonomous: after boot it starts DSH, SurfCore and SnowLuma in order, signs in to the SnowLuma console automatically, and injects the selected QQ process.
 
 Its **scheduled power on/off feature works completely standalone** — it does not require DeepSeek Harness or SurfCore.
 
