@@ -12,7 +12,9 @@ internal sealed class MainForm : Form
     private readonly Icon _appIcon;
 
     private readonly ToggleSwitch _masterToggle;
-    private readonly ToggleSwitch _bootToggle;
+    private readonly ToggleSwitch _restartToggle;
+    private readonly ToggleSwitch _wakeToggle;
+    private readonly ToggleSwitch _hibernateToggle;
     private readonly ToggleSwitch _shutdownToggle;
     private readonly TabSwitch _tab;
     private readonly DayWheel _dayWheel;
@@ -34,7 +36,7 @@ internal sealed class MainForm : Form
     private OptionsPopup _powerPopup;
     private bool _loading = true;
     private bool _expanded;
-    private bool _editingBoot = true;
+    private int _editIndex = 2;
     private int _selectedDay;
     private bool _syncBusy;
     private bool _syncAgain;
@@ -79,14 +81,16 @@ internal sealed class MainForm : Form
         ClientSize = new Size(600, 540);
 
         _masterToggle = new ToggleSwitch { Surface = Theme.Card };
-        _bootToggle = new ToggleSwitch { Surface = Theme.Card, Size = new Size(34, 19) };
-        _shutdownToggle = new ToggleSwitch { Surface = Theme.Card, Size = new Size(34, 19) };
-        _tab = new TabSwitch { Surface = Theme.Card, Items = new[] { "开机时间", "关机时间" }, SelectedIndex = 0 };
+        _restartToggle = new ToggleSwitch { Surface = Theme.Card, Size = new Size(30, 17) };
+        _wakeToggle = new ToggleSwitch { Surface = Theme.Card, Size = new Size(26, 15) };
+        _hibernateToggle = new ToggleSwitch { Surface = Theme.Card, Size = new Size(26, 15) };
+        _shutdownToggle = new ToggleSwitch { Surface = Theme.Card, Size = new Size(26, 15) };
+        _tab = new TabSwitch { Surface = Theme.Card, Items = new[] { "重启", "休眠", "唤醒", "关机" }, SelectedIndex = 2 };
         _dayWheel = new DayWheel { Surface = Theme.Card };
         _hourWheel = new ValueWheel { Surface = Theme.Card, Min = 0, Max = 23, Value = 7 };
         _minuteWheel = new ValueWheel { Surface = Theme.Card, Min = 0, Max = 59, Value = 0 };
         _quickStrip = new QuickStrip { Surface = Theme.Card };
-        _powerStrip = new OptionStrip { Surface = Theme.Card, Label = "关机选项", Options = new bool[3] };
+        _powerStrip = new OptionStrip { Surface = Theme.Card, Label = "关机选项", Options = new bool[2] };
         _surfToggle = new ToggleSwitch { Surface = Theme.Card, Size = new Size(40, 22) };
         _launchButton = new FlatButton { Text = "立即启动", Style = FlatButtonStyle.Soft, Surface = Theme.Card, Radius = 8 };
         _deleteButton = new FlatButton { Text = "卸载", Style = FlatButtonStyle.Danger, Surface = Theme.Bg, Radius = 6 };
@@ -99,7 +103,7 @@ internal sealed class MainForm : Form
 
         Controls.AddRange(new Control[]
         {
-            _masterToggle, _bootToggle, _shutdownToggle, _tab, _dayWheel, _hourWheel, _minuteWheel,
+            _masterToggle, _restartToggle, _wakeToggle, _hibernateToggle, _shutdownToggle, _tab, _dayWheel, _hourWheel, _minuteWheel,
             _quickStrip, _powerStrip, _surfToggle, _launchButton, _deleteButton, _passwordBox, _qqBox,
             _minButton, _closeButton
         });
@@ -113,10 +117,42 @@ internal sealed class MainForm : Form
             SyncScheduleAsync();
             SetStatus(_cfg.MasterEnabled ? "总开关已开启" : "总开关已关闭，计划任务已移除");
         };
-        _bootToggle.CheckedChanged += (_, _) =>
+        _restartToggle.CheckedChanged += (_, _) =>
         {
             if (_loading) return;
-            _cfg.BootEnabled = _bootToggle.Checked;
+            _cfg.RestartEnabled = _restartToggle.Checked;
+            UpdateEnabledStates();
+            ScheduleSave();
+            SyncScheduleAsync();
+        };
+        _hibernateToggle.CheckedChanged += (_, _) =>
+        {
+            if (_loading) return;
+            _cfg.HibernateEnabled = _hibernateToggle.Checked;
+            if (!_cfg.HibernateEnabled && _cfg.BootEnabled)
+            {
+                _cfg.BootEnabled = false;
+                _loading = true;
+                _wakeToggle.Checked = false;
+                _loading = false;
+            }
+            UpdateEnabledStates();
+            RefreshScheduleUi();
+            ScheduleSave();
+            SyncScheduleAsync();
+            SetStatus(_cfg.HibernateEnabled ? "休眠已开启，可以启用唤醒" : "休眠已关闭，唤醒已禁用");
+        };
+        _wakeToggle.CheckedChanged += (_, _) =>
+        {
+            if (_loading) return;
+            if (_wakeToggle.Checked && !_cfg.HibernateEnabled)
+            {
+                _loading = true;
+                _wakeToggle.Checked = false;
+                _loading = false;
+                return;
+            }
+            _cfg.BootEnabled = _wakeToggle.Checked;
             ScheduleSave();
             SyncScheduleAsync();
         };
@@ -129,7 +165,7 @@ internal sealed class MainForm : Form
         };
         _tab.SelectionChanged += (_, _) =>
         {
-            _editingBoot = _tab.SelectedIndex == 0;
+            _editIndex = _tab.SelectedIndex;
             RefreshScheduleUi();
         };
         _dayWheel.SelectedIndexChanged += (_, _) =>
@@ -142,7 +178,7 @@ internal sealed class MainForm : Form
         _dayWheel.DayEnabledChanged += (_, _) =>
         {
             if (_loading) return;
-            var sched = _cfg.GetSchedule(_editingBoot);
+            var sched = _cfg.GetSchedule(_editIndex);
             sched.Days[_selectedDay].Enabled = _dayWheel.GetEnabled(_selectedDay);
             ScheduleSave();
             SyncScheduleAsync();
@@ -263,7 +299,7 @@ internal sealed class MainForm : Form
         if (!StartupRegistration.Ensure())
             SetStatus("警告：写入开机自启动失败", true);
         SyncScheduleAsync(false);
-        if (_cfg.SurfCoreAutoStart) _ = AutoStartAsync();
+        if (_cfg.SurfCoreAutoStart && _cfg.MasterEnabled) _ = AutoStartAsync();
     }
 
     private static bool IsElevated()
@@ -370,7 +406,7 @@ internal sealed class MainForm : Form
 
         var done = "文件与缓存已删除，感谢您的使用。";
         if (taskFailed)
-            done += "\n\n注意：部分 Windows 计划任务未能卸载，请以管理员身份在“任务计划程序”中卸载 SurfCoreAutoStart-Boot / SurfCoreAutoStart-Shutdown。";
+            done += "\n\n注意：部分 Windows 计划任务未能卸载，请以管理员身份在“任务计划程序”中卸载 SurfCoreAutoStart-Restart / -Hibernate / -Boot / -Shutdown。";
         if (startupFailed)
             done += "\n\n注意：开机自启动任务 SurfCoreAutoStart-App 未能卸载，请在“任务计划程序”中手动删除。";
         MessageBox.Show(this, done, "SurfCore Auto-start",
@@ -413,11 +449,13 @@ internal sealed class MainForm : Form
     {
         _loading = true;
         _masterToggle.Checked = _cfg.MasterEnabled;
-        _bootToggle.Checked = _cfg.BootEnabled;
+        _restartToggle.Checked = _cfg.RestartEnabled;
+        _hibernateToggle.Checked = _cfg.HibernateEnabled;
+        _wakeToggle.Checked = _cfg.BootEnabled && _cfg.HibernateEnabled;
         _shutdownToggle.Checked = _cfg.ShutdownEnabled;
-        _tab.SelectedIndex = _editingBoot ? 0 : 1;
+        _tab.SelectedIndex = _editIndex;
         _surfToggle.Checked = _cfg.SurfCoreAutoStart;
-        _powerStrip.Options = new[] { _cfg.ShutdownCountdown, _cfg.OnlineNoShutdown, _cfg.HibernateOnShutdown };
+        _powerStrip.Options = new[] { _cfg.ShutdownCountdown, _cfg.OnlineNoShutdown };
         _passwordBox.Text = _cfg.SnowLumaPassword;
         _qqBox.Text = _cfg.QqNumber;
         _expanded = _cfg.SurfCoreAutoStart || _previewExpanded;
@@ -442,11 +480,13 @@ internal sealed class MainForm : Form
         _closeButton.Bounds = R(BaseWidth - 44, 8, 34, 28);
 
         _masterToggle.Bounds = R(40, 76, 44, 24);
-        _bootToggle.Bounds = R(282, 78, 34, 19);
-        _shutdownToggle.Bounds = R(410, 78, 34, 19);
-        _powerStrip.Bounds = R(528, 52, 44, 72);
+        _restartToggle.Bounds = R(280, 59, 30, 17);
+        _wakeToggle.Bounds = R(278, 97, 26, 15);
+        _hibernateToggle.Bounds = R(362, 97, 26, 15);
+        _shutdownToggle.Bounds = R(450, 97, 26, 15);
+        _powerStrip.Bounds = R(528, 52, 44, 70);
 
-        _tab.Bounds = R(42, 148, 168, 28);
+        _tab.Bounds = R(42, 148, 240, 28);
         _dayWheel.Bounds = R(42, 204, 210, 150);
         _hourWheel.Bounds = R(262, 204, 116, 150);
         _minuteWheel.Bounds = R(388, 204, 116, 150);
@@ -484,12 +524,14 @@ internal sealed class MainForm : Form
     {
         _loading = true;
         _dayWheel.SelectedIndex = _selectedDay;
-        var sched = _cfg.GetSchedule(_editingBoot);
+        var sched = _cfg.GetSchedule(_editIndex);
         _dayWheel.SetAll(sched.Days.Select(d => d.Enabled).ToArray());
         var day = sched.Days[_selectedDay];
         _hourWheel.Value = day.Hour;
         _minuteWheel.Value = day.Minute;
         _quickStrip.BootDailySame = _cfg.BootDailySame;
+        _quickStrip.RestartDailySame = _cfg.RestartDailySame;
+        _quickStrip.HibernateDailySame = _cfg.HibernateDailySame;
         _quickStrip.ShutdownDailySame = _cfg.ShutdownDailySame;
         _loading = false;
         UpdateEnabledStates();
@@ -499,7 +541,7 @@ internal sealed class MainForm : Form
     private void LoadDayIntoValueWheels()
     {
         _loading = true;
-        var sched = _cfg.GetSchedule(_editingBoot);
+        var sched = _cfg.GetSchedule(_editIndex);
         var day = sched.Days[_selectedDay];
         _hourWheel.Value = day.Hour;
         _minuteWheel.Value = day.Minute;
@@ -509,11 +551,11 @@ internal sealed class MainForm : Form
     private void OnTimeEdited()
     {
         if (_loading) return;
-        var sched = _cfg.GetSchedule(_editingBoot);
+        var sched = _cfg.GetSchedule(_editIndex);
         var day = sched.Days[_selectedDay];
         day.Hour = _hourWheel.Value;
         day.Minute = _minuteWheel.Value;
-        if (_editingBoot ? _cfg.BootDailySame : _cfg.ShutdownDailySame)
+        if (_cfg.GetDailySame(_editIndex))
         {
             foreach (var d in sched.Days)
             {
@@ -536,8 +578,12 @@ internal sealed class MainForm : Form
 
     private void UpdateEnabledStates()
     {
-        _bootToggle.Enabled = _cfg.MasterEnabled;
-        _shutdownToggle.Enabled = _cfg.MasterEnabled;
+        var master = _cfg.MasterEnabled;
+        _restartToggle.Enabled = master;
+        _hibernateToggle.Enabled = master;
+        _wakeToggle.Enabled = master && _cfg.HibernateEnabled;
+        _shutdownToggle.Enabled = master;
+        _surfToggle.Enabled = master;
         _hourWheel.Enabled = true;
         _minuteWheel.Enabled = true;
         Invalidate();
@@ -548,9 +594,11 @@ internal sealed class MainForm : Form
         try
         {
             if (_popup != null && !_popup.IsDisposed) { _popup.Close(); _popup = null; }
-            var popup = new QuickPopup(_cfg.BootDailySame, _cfg.ShutdownDailySame);
-            popup.BootDailySameChanged += OnBootDailySameChanged;
-            popup.ShutdownDailySameChanged += OnShutdownDailySameChanged;
+            var popup = new QuickPopup(_cfg.RestartDailySame, _cfg.HibernateDailySame, _cfg.BootDailySame, _cfg.ShutdownDailySame);
+            popup.RestartDailySameChanged += on => OnDailySameChanged(0, on);
+            popup.HibernateDailySameChanged += on => OnDailySameChanged(1, on);
+            popup.BootDailySameChanged += on => OnDailySameChanged(2, on);
+            popup.ShutdownDailySameChanged += on => OnDailySameChanged(3, on);
             popup.FormClosed += (_, _) => { if (ReferenceEquals(_popup, popup)) _popup = null; };
             _popup = popup;
             popup.ShowBelow(_quickStrip);
@@ -568,10 +616,10 @@ internal sealed class MainForm : Form
             if (_powerPopup != null && !_powerPopup.IsDisposed) { _powerPopup.Close(); _powerPopup = null; }
             var popup = new OptionsPopup(
                 "关机选项",
-                new[] { "关机倒计时提醒", "在线时不关机", "关机改为休眠" },
-                new[] { "关机前 1 分钟弹窗，可取消", "最近 3 分钟有键鼠操作则跳过", "休眠后才能被定时唤醒；完全关机无法自动开机" },
-                new[] { _cfg.ShutdownCountdown, _cfg.OnlineNoShutdown, _cfg.HibernateOnShutdown },
-                "仅对定时关机生效；有开机计划时建议保持休眠");
+                new[] { "关机倒计时提醒", "在线时不关机" },
+                new[] { "关机前 1 分钟弹窗，可取消", "最近 3 分钟有键鼠操作则跳过" },
+                new[] { _cfg.ShutdownCountdown, _cfg.OnlineNoShutdown },
+                "仅对定时关机生效");
             popup.OptionChanged += OnPowerOptionChanged;
             popup.FormClosed += (_, _) => { if (ReferenceEquals(_powerPopup, popup)) _powerPopup = null; };
             _powerPopup = popup;
@@ -587,54 +635,53 @@ internal sealed class MainForm : Form
     {
         if (index == 0) _cfg.ShutdownCountdown = on;
         else if (index == 1) _cfg.OnlineNoShutdown = on;
-        else if (index == 2) _cfg.HibernateOnShutdown = on;
-        _powerStrip.Options = new[] { _cfg.ShutdownCountdown, _cfg.OnlineNoShutdown, _cfg.HibernateOnShutdown };
+        _powerStrip.Options = new[] { _cfg.ShutdownCountdown, _cfg.OnlineNoShutdown };
         ScheduleSave();
         SyncScheduleAsync();
         SetStatus(index switch
         {
             0 => on ? "已启用：关机前 1 分钟提醒，可取消" : "已关闭：关机前不再提醒",
-            1 => on ? "已启用：最近 3 分钟有人操作则跳过关机" : "已关闭：在线时也按时关机",
-            _ => on ? "已启用：定时关机改为休眠，可被定时开机唤醒" : "已关闭：定时关机为完全关机，无法自动开机"
+            _ => on ? "已启用：最近 3 分钟有人操作则跳过关机" : "已关闭：在线时也按时关机"
         });
     }
 
-    private void OnBootDailySameChanged(bool on)
+    private string ActionName(int index) => index switch
     {
-        _cfg.BootDailySame = on;
-        if (on)
+        0 => "重启", 1 => "休眠", 2 => "唤醒", _ => "关机"
+    };
+
+    private string SummaryText()
+    {
+        var parts = new List<string>();
+        for (var i = 0; i < 4; i++)
         {
-            var baseDay = _cfg.Boot.Days[_selectedDay];
-            foreach (var d in _cfg.Boot.Days)
-            {
-                d.Hour = baseDay.Hour;
-                d.Minute = baseDay.Minute;
-            }
+            var sched = _cfg.GetSchedule(i);
+            var day = sched.Days[_selectedDay];
+            var enabled = _cfg.MasterEnabled && _cfg.IsActionEnabled(i);
+            if (i == 2) enabled = enabled && _cfg.HibernateEnabled;
+            var label = _cfg.GetDailySame(i) ? "每天" : DayName(_selectedDay);
+            parts.Add(enabled ? $"{ActionName(i)} {label} {day.TimeText}" : $"{ActionName(i)} —");
         }
-        _cfg.ApplyLinkInvariants();
-        RefreshScheduleUi();
-        ScheduleSave();
-        SyncScheduleAsync();
-        SetStatus(on ? "已启用：7 天开机时间一致" : "已关闭：各天开机时间可分别设置");
+        return string.Join(" · ", parts);
     }
 
-    private void OnShutdownDailySameChanged(bool on)
+    private void OnDailySameChanged(int index, bool on)
     {
-        _cfg.ShutdownDailySame = on;
         if (on)
         {
-            var baseDay = _cfg.Shutdown.Days[_selectedDay];
-            foreach (var d in _cfg.Shutdown.Days)
+            var sched = _cfg.GetSchedule(index);
+            var baseDay = sched.Days[_selectedDay];
+            foreach (var d in sched.Days)
             {
                 d.Hour = baseDay.Hour;
                 d.Minute = baseDay.Minute;
             }
         }
-        _cfg.ApplyLinkInvariants();
+        _cfg.SetDailySame(index, on);
         RefreshScheduleUi();
         ScheduleSave();
         SyncScheduleAsync();
-        SetStatus(on ? "已启用：7 天关机时间一致" : "已关闭：各天关机时间可分别设置");
+        SetStatus(on ? $"已启用：7 天{ActionName(index)}时间一致" : $"已关闭：各天{ActionName(index)}时间可分别设置");
     }
 
     private void ScheduleSave()
@@ -650,7 +697,9 @@ internal sealed class MainForm : Form
         try
         {
             _cfg.MasterEnabled = _masterToggle.Checked;
-            _cfg.BootEnabled = _bootToggle.Checked;
+            _cfg.RestartEnabled = _restartToggle.Checked;
+            _cfg.BootEnabled = _wakeToggle.Checked;
+            _cfg.HibernateEnabled = _hibernateToggle.Checked;
             _cfg.ShutdownEnabled = _shutdownToggle.Checked;
             _cfg.SurfCoreAutoStart = _surfToggle.Checked;
             _cfg.QqNumber = _qqBox.Text.Trim();
@@ -668,12 +717,7 @@ internal sealed class MainForm : Form
         if (_preview) return;
         if (!force && !IsElevated())
         {
-            var bootExists = Scheduler.BootTaskExists();
-            var shutdownExists = Scheduler.ShutdownTaskExists();
-            var matches = _cfg.MasterEnabled
-                ? _cfg.BootEnabled == bootExists && _cfg.ShutdownEnabled == shutdownExists
-                : !bootExists && !shutdownExists;
-            if (matches)
+            if (Scheduler.TasksMatch(_cfg))
             {
                 SetTaskStatus(_cfg.MasterEnabled ? "计划任务 · 已同步" : "计划任务 · 未启用", false);
                 return;
@@ -693,7 +737,7 @@ internal sealed class MainForm : Form
                 if (result.Success)
                 {
                     _syncErrorShown = false;
-                    var active = result.BootActive || result.ShutdownActive;
+                    var active = result.RestartActive || result.HibernateActive || result.WakeActive || result.ShutdownActive;
                     SetTaskStatus(active ? "计划任务 · 已同步" : "计划任务 · 未启用", false);
                 }
                 else
@@ -726,7 +770,7 @@ internal sealed class MainForm : Form
         if (_syncErrorShown) return;
         _syncErrorShown = true;
 
-        var text = "Windows 计划任务没有更新成功，因此定时开机/关机暂时不会生效。\n\n" +
+        var text = "Windows 计划任务没有更新成功，因此定时重启/休眠/唤醒/关机暂时不会生效。\n\n" +
                    "常见原因：\n" +
                    "· 当前账户没有创建计划任务的权限\n" +
                    "· 安全软件拦截了计划任务写入\n" +
@@ -815,31 +859,44 @@ internal sealed class MainForm : Form
         DrawTitle(g, s);
 
         Ui.DrawCard(g, R(24, 52, 240, 72));
-        Ui.DrawCard(g, R(272, 52, 120, 72));
-        Ui.DrawCard(g, R(400, 52, 120, 72));
+        Ui.DrawCard(g, R(272, 52, 248, 30));
+        Ui.DrawCard(g, R(272, 88, 168, 34));
+        Ui.DrawCard(g, R(444, 88, 76, 34));
         Theme.DrawText(g, "总开关", Theme.Font11B, Theme.Text, R(94, 62, 158, 22));
-        Theme.DrawText(g, "每周定时开关机", Theme.Font8_5, Theme.SubText, R(94, 86, 158, 18));
-        Theme.DrawText(g, "开机", Theme.Font9_5, Theme.Text, R(322, 62, 62, 18));
-        Theme.DrawText(g, _cfg.Boot.Days[_selectedDay].TimeText, Theme.Font8_5, Theme.SubText, R(322, 82, 62, 16));
-        Theme.DrawText(g, "关机", Theme.Font9_5, Theme.Text, R(450, 62, 62, 18));
-        Theme.DrawText(g, _cfg.Shutdown.Days[_selectedDay].TimeText, Theme.Font8_5, Theme.SubText, R(450, 82, 62, 16));
+        Theme.DrawText(g, "每周定时计划", Theme.Font8_5, Theme.SubText, R(94, 86, 158, 18));
+
+        Theme.DrawText(g, "重启", Theme.Font9_5, Theme.Text, R(320, 57, 58, 18));
+        Theme.DrawText(g, _cfg.Restart.Days[_selectedDay].TimeText, Theme.Font8_5,
+            _cfg.RestartEnabled && _cfg.MasterEnabled ? Theme.Text : Theme.Muted, R(392, 57, 116, 18), StringAlignment.Far);
+
+        using (var pen = new Pen(Theme.CardBorder, 1f * s))
+            g.DrawLine(pen, L(356), L(94), L(356), L(116));
+        Theme.DrawText(g, "唤醒", Theme.Font9, Theme.Text, R(306, 89, 44, 16));
+        Theme.DrawText(g, _cfg.Boot.Days[_selectedDay].TimeText, Theme.Font8,
+            _cfg.BootEnabled && _cfg.HibernateEnabled && _cfg.MasterEnabled ? Theme.SubText : Theme.Muted,
+            R(306, 105, 44, 13));
+        Theme.DrawText(g, "休眠", Theme.Font9, Theme.Text, R(386, 89, 44, 16));
+        Theme.DrawText(g, _cfg.Hibernate.Days[_selectedDay].TimeText, Theme.Font8,
+            _cfg.HibernateEnabled && _cfg.MasterEnabled ? Theme.SubText : Theme.Muted,
+            R(386, 105, 44, 13));
+
+        Theme.DrawText(g, "关机", Theme.Font9, Theme.Text, R(478, 89, 40, 16));
+        Theme.DrawText(g, _cfg.Shutdown.Days[_selectedDay].TimeText, Theme.Font8,
+            _cfg.ShutdownEnabled && _cfg.MasterEnabled ? Theme.SubText : Theme.Muted,
+            R(478, 105, 40, 13));
 
         Ui.DrawCard(g, R(24, 134, 552, 282));
-        var sched = _cfg.GetSchedule(_editingBoot);
+        var sched = _cfg.GetSchedule(_editIndex);
         var current = sched.Days[_selectedDay];
         Theme.DrawText(g, $"{DayName(_selectedDay)} · {current.TimeText}", Theme.Font9, Theme.SubText,
-            R(290, 152, 268, 20), StringAlignment.Far);
+            R(292, 152, 266, 20), StringAlignment.Far);
         Theme.DrawText(g, "星期", Theme.Font8, Theme.Muted, R(50, 186, 120, 14));
         Theme.DrawText(g, "小时", Theme.Font8, Theme.Muted, R(262, 186, 116, 14), StringAlignment.Center);
         Theme.DrawText(g, "分钟", Theme.Font8, Theme.Muted, R(388, 186, 116, 14), StringAlignment.Center);
 
-        var bootDay = _cfg.Boot.Days[_selectedDay];
-        var shutDay = _cfg.Shutdown.Days[_selectedDay];
-        var bootLabel = _cfg.BootDailySame ? "每天" : DayName(_selectedDay);
-        var shutLabel = _cfg.ShutdownDailySame ? "每天" : DayName(_selectedDay);
-        var summary = $"开机 {bootLabel} {bootDay.TimeText} · 关机 {shutLabel} {shutDay.TimeText}";
-        Theme.DrawText(g, summary, Theme.Font8_5, Theme.Text, R(42, 362, 360, 20));
-        Theme.DrawText(g, "滚轮选择 · 左键确定", Theme.Font8, Theme.Muted, R(380, 362, 178, 20), StringAlignment.Far);
+        var summary = SummaryText();
+        Theme.DrawText(g, summary, Theme.Font8, Theme.Text, R(42, 362, 396, 20));
+        Theme.DrawText(g, "滚轮选择 · 左键确定", Theme.Font8, Theme.Muted, R(438, 362, 120, 20), StringAlignment.Far);
 
         var cardH = _expanded ? 148 : 62;
         Ui.DrawCard(g, R(24, 426, 552, cardH));
@@ -872,7 +929,7 @@ internal sealed class MainForm : Form
             g.DrawLine(pen, L(32), L(22), L(35), L(23));
         }
         Theme.DrawText(g, "SurfCore Auto-start", Theme.Font11B, Theme.Text, R(52, 11, 176, 22));
-        Theme.DrawText(g, "v0.1.1", Theme.Font8, Theme.Muted, R(226, 15, 48, 16));
+        Theme.DrawText(g, "v0.1.2", Theme.Font8, Theme.Muted, R(226, 15, 48, 16));
     }
 
     private void DrawStatus(Graphics g, float s)

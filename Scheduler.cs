@@ -10,15 +10,30 @@ internal sealed class SchedulerResult
 {
     public bool Success { get; set; }
     public string Message { get; set; } = "";
-    public bool BootActive { get; set; }
+    public bool RestartActive { get; set; }
+    public bool HibernateActive { get; set; }
+    public bool WakeActive { get; set; }
     public bool ShutdownActive { get; set; }
-    public int BootDays { get; set; }
+    public int RestartDays { get; set; }
+    public int HibernateDays { get; set; }
+    public int WakeDays { get; set; }
     public int ShutdownDays { get; set; }
+}
+
+internal enum ScheduledAction
+{
+    Restart,
+    Hibernate,
+    Wake,
+    Shutdown
 }
 
 internal static class Scheduler
 {
-    public const string BootTaskName = "SurfCoreAutoStart-Boot";
+    public const string RestartTaskName = "SurfCoreAutoStart-Restart";
+    public const string HibernateTaskName = "SurfCoreAutoStart-Hibernate";
+    // 沿用旧任务名，避免升级时残留一个永不删除的旧唤醒任务。
+    public const string WakeTaskName = "SurfCoreAutoStart-Boot";
     public const string ShutdownTaskName = "SurfCoreAutoStart-Shutdown";
     private static readonly XNamespace Ns = "http://schemas.microsoft.com/windows/2004/02/mit/task";
 
@@ -29,45 +44,34 @@ internal static class Scheduler
         var result = new SchedulerResult();
         try
         {
-            var bootWanted = cfg.MasterEnabled && cfg.BootEnabled && cfg.Boot.EnabledCount > 0;
+            var restartWanted = cfg.MasterEnabled && cfg.RestartEnabled && cfg.Restart.EnabledCount > 0;
+            var hibernateWanted = cfg.MasterEnabled && cfg.HibernateEnabled && cfg.Hibernate.EnabledCount > 0;
+            var wakeWanted = cfg.MasterEnabled && cfg.HibernateEnabled && cfg.BootEnabled && cfg.Boot.EnabledCount > 0;
             var shutdownWanted = cfg.MasterEnabled && cfg.ShutdownEnabled && cfg.Shutdown.EnabledCount > 0;
 
-            result.BootDays = cfg.Boot.EnabledCount;
+            result.RestartDays = cfg.Restart.EnabledCount;
+            result.HibernateDays = cfg.Hibernate.EnabledCount;
+            result.WakeDays = cfg.Boot.EnabledCount;
             result.ShutdownDays = cfg.Shutdown.EnabledCount;
 
             var errors = new List<string>();
 
-            if (bootWanted)
-            {
+            if (hibernateWanted || wakeWanted)
                 EnsureWakeSupport();
-                var r = CreateTask(true, cfg.Boot, cfg);
-                if (!r.ok) errors.Add("开机任务: " + r.message);
-                else result.BootActive = true;
-            }
-            else if (TaskExists(BootTaskName))
-            {
-                var r = DeleteTask(BootTaskName);
-                if (!r.ok) errors.Add("卸载开机任务: " + r.message);
-            }
 
-            if (shutdownWanted)
-            {
-                var r = CreateTask(false, cfg.Shutdown, cfg);
-                if (!r.ok) errors.Add("关机任务: " + r.message);
-                else result.ShutdownActive = true;
-            }
-            else if (TaskExists(ShutdownTaskName))
-            {
-                var r = DeleteTask(ShutdownTaskName);
-                if (!r.ok) errors.Add("卸载关机任务: " + r.message);
-            }
+            ApplyOne(ScheduledAction.Restart, restartWanted, cfg.Restart, cfg, errors, active => result.RestartActive = active);
+            ApplyOne(ScheduledAction.Hibernate, hibernateWanted, cfg.Hibernate, cfg, errors, active => result.HibernateActive = active);
+            ApplyOne(ScheduledAction.Wake, wakeWanted, cfg.Boot, cfg, errors, active => result.WakeActive = active);
+            ApplyOne(ScheduledAction.Shutdown, shutdownWanted, cfg.Shutdown, cfg, errors, active => result.ShutdownActive = active);
 
             result.Success = errors.Count == 0;
             result.Message = errors.Count > 0 ? string.Join("；", errors) : "计划任务已同步";
-            if (!result.BootActive) result.BootActive = TaskExists(BootTaskName);
+            if (!result.RestartActive) result.RestartActive = TaskExists(RestartTaskName);
+            if (!result.HibernateActive) result.HibernateActive = TaskExists(HibernateTaskName);
+            if (!result.WakeActive) result.WakeActive = TaskExists(WakeTaskName);
             if (!result.ShutdownActive) result.ShutdownActive = TaskExists(ShutdownTaskName);
-            Log.Info($"Scheduler.Apply master={cfg.MasterEnabled} boot={cfg.BootEnabled} shutdown={cfg.ShutdownEnabled} " +
-                     $"hibernate={cfg.ShouldHibernateForBoot} bootActive={result.BootActive} shutdownActive={result.ShutdownActive} msg={result.Message}");
+            Log.Info($"Scheduler.Apply master={cfg.MasterEnabled} restart={cfg.RestartEnabled} hibernate={cfg.HibernateEnabled} " +
+                     $"wake={cfg.BootEnabled} shutdown={cfg.ShutdownEnabled} active={result.RestartActive}/{result.HibernateActive}/{result.WakeActive}/{result.ShutdownActive} msg={result.Message}");
         }
         catch (Exception ex)
         {
@@ -78,20 +82,67 @@ internal static class Scheduler
         return result;
     }
 
-    public static bool BootTaskExists() => TaskExists(BootTaskName);
+    private static void ApplyOne(ScheduledAction action, bool wanted, ScheduleConfig schedule, AppConfig cfg,
+        List<string> errors, Action<bool> setActive)
+    {
+        var name = TaskName(action);
+        if (wanted)
+        {
+            var r = CreateTask(action, schedule, cfg);
+            if (!r.ok) errors.Add(Label(action) + "任务: " + r.message);
+            else setActive(true);
+        }
+        else if (TaskExists(name))
+        {
+            var r = DeleteTask(name);
+            if (!r.ok) errors.Add("卸载" + Label(action) + "任务: " + r.message);
+        }
+    }
+
+    public static bool WakeTaskExists() => TaskExists(WakeTaskName);
     public static bool ShutdownTaskExists() => TaskExists(ShutdownTaskName);
+    public static bool RestartTaskExists() => TaskExists(RestartTaskName);
+    public static bool HibernateTaskExists() => TaskExists(HibernateTaskName);
+
+    public static bool TasksMatch(AppConfig cfg)
+    {
+        var restart = cfg.MasterEnabled && cfg.RestartEnabled && cfg.Restart.EnabledCount > 0;
+        var hibernate = cfg.MasterEnabled && cfg.HibernateEnabled && cfg.Hibernate.EnabledCount > 0;
+        var wake = cfg.MasterEnabled && cfg.HibernateEnabled && cfg.BootEnabled && cfg.Boot.EnabledCount > 0;
+        var shutdown = cfg.MasterEnabled && cfg.ShutdownEnabled && cfg.Shutdown.EnabledCount > 0;
+        return restart == TaskExists(RestartTaskName)
+            && hibernate == TaskExists(HibernateTaskName)
+            && wake == TaskExists(WakeTaskName)
+            && shutdown == TaskExists(ShutdownTaskName);
+    }
 
     /// <summary>删除本程序创建的全部计划任务；删除失败时返回 false。</summary>
     public static bool RemoveAll()
     {
         var ok = true;
-        foreach (var name in new[] { BootTaskName, ShutdownTaskName })
+        foreach (var name in new[] { RestartTaskName, HibernateTaskName, WakeTaskName, ShutdownTaskName })
         {
             var r = DeleteTask(name);
             if (!r.ok) { ok = false; Log.Warn("删除计划任务失败 " + name + ": " + r.message); }
         }
         return ok;
     }
+
+    private static string TaskName(ScheduledAction action) => action switch
+    {
+        ScheduledAction.Restart => RestartTaskName,
+        ScheduledAction.Hibernate => HibernateTaskName,
+        ScheduledAction.Wake => WakeTaskName,
+        _ => ShutdownTaskName
+    };
+
+    private static string Label(ScheduledAction action) => action switch
+    {
+        ScheduledAction.Restart => "重启",
+        ScheduledAction.Hibernate => "休眠",
+        ScheduledAction.Wake => "唤醒",
+        _ => "关机"
+    };
 
     private static bool TaskExists(string name)
     {
@@ -153,10 +204,12 @@ internal static class Scheduler
         }
     }
 
-    private static (bool ok, string message) CreateTask(bool boot, ScheduleConfig schedule, AppConfig cfg)
+    private static (bool ok, string message) CreateTask(ScheduledAction action, ScheduleConfig schedule, AppConfig cfg)
     {
-        var name = boot ? BootTaskName : ShutdownTaskName;
-        var leadSeconds = boot ? 0 : cfg.OnlineNoShutdown ? 180 : cfg.ShutdownCountdown ? 60 : 0;
+        var name = TaskName(action);
+        var leadSeconds = action == ScheduledAction.Shutdown
+            ? cfg.OnlineNoShutdown ? 180 : cfg.ShutdownCountdown ? 60 : 0
+            : 0;
         var triggers = new XElement(Ns + "Triggers");
         for (var i = 0; i < 7; i++)
         {
@@ -173,15 +226,28 @@ internal static class Scheduler
                         new XElement(Ns + "DaysOfWeek", new XElement(Ns + DayElement(dow))))));
         }
 
-        var hibernate = !boot && cfg.ShouldHibernateForBoot;
-        var description = boot
-            ? "SurfCore Auto-start 定时开机（从睡眠/休眠唤醒，并补跑错过的事件）"
-            : hibernate
-                ? "SurfCore Auto-start 定时关机（休眠，以便下次定时唤醒）"
-                : "SurfCore Auto-start 定时关机";
-        var useGuard = !boot && (cfg.ShutdownCountdown || cfg.OnlineNoShutdown);
-        var command = boot ? "cmd.exe" : useGuard ? StartupRegistration.ExePath : "shutdown.exe";
-        var arguments = boot ? "/c exit" : useGuard ? "--shutdown-guard" : hibernate ? "/h" : "/s /t 0";
+        var useGuard = action == ScheduledAction.Shutdown && (cfg.ShutdownCountdown || cfg.OnlineNoShutdown);
+        var command = action switch
+        {
+            ScheduledAction.Restart => "shutdown.exe",
+            ScheduledAction.Hibernate => "shutdown.exe",
+            ScheduledAction.Wake => "cmd.exe",
+            _ => useGuard ? StartupRegistration.ExePath : "shutdown.exe"
+        };
+        var arguments = action switch
+        {
+            ScheduledAction.Restart => "/r /t 0",
+            ScheduledAction.Hibernate => "/h",
+            ScheduledAction.Wake => "/c exit",
+            _ => useGuard ? "--shutdown-guard" : "/s /t 0"
+        };
+        var description = action switch
+        {
+            ScheduledAction.Restart => "SurfCore Auto-start 定时重启（清空内存负荷）",
+            ScheduledAction.Hibernate => "SurfCore Auto-start 定时休眠（保留现场，供定时唤醒）",
+            ScheduledAction.Wake => "SurfCore Auto-start 定时唤醒（从睡眠/休眠唤醒，并补跑错过的事件）",
+            _ => "SurfCore Auto-start 定时关机"
+        };
 
         var doc = new XDocument(
             new XDeclaration("1.0", "UTF-16", "yes"),
@@ -202,7 +268,7 @@ internal static class Scheduler
                     new XElement(Ns + "DisallowStartIfOnBatteries", "false"),
                     new XElement(Ns + "StopIfGoingOnBatteries", "false"),
                     new XElement(Ns + "AllowHardTerminate", "true"),
-                    new XElement(Ns + "StartWhenAvailable", boot ? "true" : "false"),
+                    new XElement(Ns + "StartWhenAvailable", action == ScheduledAction.Wake ? "true" : "false"),
                     new XElement(Ns + "RunOnlyIfNetworkAvailable", "false"),
                     new XElement(Ns + "IdleSettings",
                         new XElement(Ns + "StopOnIdleEnd", "false"),
@@ -211,9 +277,8 @@ internal static class Scheduler
                     new XElement(Ns + "Enabled", "true"),
                     new XElement(Ns + "Hidden", "false"),
                     new XElement(Ns + "RunOnlyIfIdle", "false"),
-                    // 只让开机任务占用唤醒定时器；关机任务若也唤醒，会抢占唯一下一个唤醒点，
-                    // 可能让休眠中的电脑在关机时刻先醒来、随后又休眠，反而丢失开机唤醒。
-                    new XElement(Ns + "WakeToRun", boot ? "true" : "false"),
+                    // 只有唤醒任务占用唤醒定时器，其他任务不能抢占唯一下一个唤醒点。
+                    new XElement(Ns + "WakeToRun", action == ScheduledAction.Wake ? "true" : "false"),
                     new XElement(Ns + "ExecutionTimeLimit", "PT0S"),
                     new XElement(Ns + "Priority", "7")),
                 new XElement(Ns + "Actions", new XAttribute("Context", "Author"),
@@ -225,7 +290,7 @@ internal static class Scheduler
         // 某些机器上 AppData 子目录会被安全软件/受限令牌拒绝，放到系统临时目录最稳妥。
         var dir = Path.Combine(Path.GetTempPath(), "SurfCoreAutoStart");
         Directory.CreateDirectory(dir);
-        var xmlPath = Path.Combine(dir, (boot ? "boot" : "shutdown") + ".xml");
+        var xmlPath = Path.Combine(dir, action.ToString().ToLowerInvariant() + ".xml");
         var xml = doc.ToString(SaveOptions.DisableFormatting);
         var settings = new XmlWriterSettings { Encoding = Encoding.Unicode, Indent = true };
         using (var writer = XmlWriter.Create(xmlPath, settings)) doc.Save(writer);

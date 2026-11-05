@@ -35,7 +35,9 @@ internal sealed class ShutdownGuardForm : Form
     {
         _demo = demo;
         _cfg = ConfigStore.Load();
-        _hibernate = !demo && _cfg.ShouldHibernateForBoot;
+        // “休眠”现在是独立的定时动作；关机守卫只负责真正的关机，
+        // 避免旧的自动改休眠逻辑和新的休眠计划重复执行。
+        _hibernate = false;
         if (demo)
         {
             _shutdownAt = DateTime.Now.AddSeconds(9);

@@ -203,15 +203,23 @@ internal static class Program
         {
             result.Success,
             result.Message,
-            result.BootActive,
+            result.RestartActive,
+            result.HibernateActive,
+            result.WakeActive,
             result.ShutdownActive,
-            result.BootDays,
+            result.RestartDays,
+            result.HibernateDays,
+            result.WakeDays,
             result.ShutdownDays,
             config = new
             {
                 cfg.MasterEnabled,
+                cfg.RestartEnabled,
+                cfg.HibernateEnabled,
                 cfg.BootEnabled,
                 cfg.ShutdownEnabled,
+                cfg.RestartDailySame,
+                cfg.HibernateDailySame,
                 cfg.BootDailySame,
                 cfg.ShutdownDailySame
             }
@@ -318,6 +326,8 @@ internal static class Program
         var power = HasFlag(args, "--power");
 
         var cfg = BuildPreviewConfig();
+        if (HasFlag(args, "--master-off")) cfg.MasterEnabled = false;
+        if (HasFlag(args, "--hibernate-off")) { cfg.HibernateEnabled = false; cfg.BootEnabled = false; }
         using var form = new MainForm(cfg, preview: true, previewExpanded: expanded, previewQuick: quick);
         form.Show();
         form.TopMost = true;
@@ -401,15 +411,23 @@ internal static class Program
         var cfg = new AppConfig
         {
             MasterEnabled = true,
+            RestartEnabled = true,
+            HibernateEnabled = true,
             BootEnabled = true,
             ShutdownEnabled = true,
+            RestartDailySame = false,
+            HibernateDailySame = false,
             BootDailySame = false,
             ShutdownDailySame = false
         };
+        cfg.Restart = ScheduleConfig.CreateDefault(4, 0);
+        cfg.Hibernate = ScheduleConfig.CreateDefault(23, 30);
         cfg.Boot = ScheduleConfig.CreateDefault(7, 0);
-        cfg.Shutdown = ScheduleConfig.CreateDefault(23, 0);
+        cfg.Shutdown = ScheduleConfig.CreateDefault(22, 0);
         for (var i = 0; i < 7; i++)
         {
+            cfg.Restart.Days[i].Enabled = i < 5;
+            cfg.Hibernate.Days[i].Enabled = i < 5;
             cfg.Boot.Days[i].Enabled = i < 5;
             cfg.Shutdown.Days[i].Enabled = i < 5;
         }

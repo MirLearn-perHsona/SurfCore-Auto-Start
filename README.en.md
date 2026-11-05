@@ -14,26 +14,30 @@ Its **scheduled power on/off feature works completely standalone** — it does n
 
 ## Features
 
-- **Weekly schedules**: configure each day from Monday to Sunday; weekday, hour and minute are selected with the mouse wheel in one compact panel and confirmed with a left click.
-- **Quick setup**: apply the same power-on or power-off time to all 7 days with one click; master switches for power-on and power-off are independent.
+- **Four independent weekly schedules**: restart, hibernate, wake and shutdown; each has its own weekday/hour/minute settings selected with the mouse wheel and confirmed with a left click.
+- **Quick setup**: apply the same time to all 7 days for restart, hibernate, wake or shutdown independently.
+- **Wake depends on hibernate**: the wake toggle can only be enabled while hibernate is on; turning hibernate off clears and greys out wake, so no wake task can exist without a preceding hibernate.
 - **Shutdown protection**: a cancellable 1-minute countdown before shutdown; shutdown is skipped when real keyboard/mouse activity occurred in the last 3 minutes.
-- **SurfCore auto-start**: with the toggle enabled and the SnowLuma console token and QQ number filled in, start DSH → SurfCore bridge → SnowLuma → OneBot → QQ injection in the correct order.
-- **Compact UI**: a 600×540 light, borderless window with custom-drawn switches and selectors.
+- **SurfCore auto-start**: with the toggle enabled and the SnowLuma console token and QQ number filled in, start DSH → SurfCore bridge → SnowLuma → OneBot → QQ injection in the correct order. It is disabled and greyed out while the master switch is off.
+- **Compact UI**: a 600×540 light, borderless window with a master switch, a restart strip, a combined hibernate/wake card and a shutdown card, plus four time-setting tabs.
 
 ## Usage
 
 1. Download `SurfCore.Auto-start.exe` from [Releases](https://github.com/MirLearn-perHsona/SurfCore-Auto-Start/releases).
 2. Recommended: place it in `C:\SurfCoreAutoStart\` and launch it from the desktop **SurfCore Auto-start** shortcut (the shortcut runs an elevated logon task).
-3. Turn on the master switch and set the weekdays and power times; changes are written to Windows Task Scheduler automatically.
+3. Turn on the master switch; enable restart / hibernate / wake / shutdown as needed, then set times on the matching tab. Changes are written to Windows Task Scheduler automatically.
 4. For SurfCore auto-start, enable its toggle, enter the **SnowLuma console token** and **QQ number**, and make sure QQ is already signed in with “Start with Windows” and “Auto sign-in” enabled.
 
 > Do not double-click the exe directly from a chat app, a web page, or the H: drive — it may not receive administrator rights and cannot create scheduled tasks. Use the desktop shortcut instead.
 
-## Scheduled power-on limitation
+## Hibernate and wake limitations
 
-Windows Task Scheduler can wake the PC from **sleep / hibernation**, but it cannot power on a motherboard that is fully shut down. For a full power-on schedule, configure RTC Wake / Resume by Alarm in the BIOS/UEFI.
+Windows Task Scheduler can wake the PC from **sleep / hibernation**, but it cannot power on a motherboard that is fully shut down.
 
-When a power-on schedule is enabled, the app changes scheduled shutdown to **hibernation** by default (toggle it in “Shutdown options”), so the next power-on can wake the PC; a fully shut-down PC cannot be started automatically.
+- To shut down and later resume automatically, use **hibernate + wake**, not the shutdown schedule.
+- **Wake requires hibernate to be enabled**; when hibernate is off, the wake button is greyed out.
+- For a full power-on schedule, configure RTC Wake / Resume by Alarm in the BIOS/UEFI.
+- A scheduled restart clears memory load, but the PC comes back on immediately instead of staying off.
 
 Check wake timers with:
 

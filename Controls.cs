@@ -506,6 +506,8 @@ internal sealed class QuickStrip : ThemedControl
     }
 
     public bool BootDailySame { get; set; }
+    public bool RestartDailySame { get; set; }
+    public bool HibernateDailySame { get; set; }
     public bool ShutdownDailySame { get; set; }
 
     public event EventHandler OpenRequested;
@@ -539,12 +541,14 @@ internal sealed class QuickStrip : ThemedControl
             Theme.DrawText(g, chars[i].ToString(), font, _hover ? Theme.AccentDark : Theme.SubText,
                 new RectangleF(0, startY + i * charH, Width, charH), StringAlignment.Center, StringAlignment.Center);
         }
-        var dotY = Height - 16f * Dpi;
-        for (var i = 0; i < 2; i++)
+        var dotY = Height - 14f * Dpi;
+        var states = new[] { RestartDailySame, HibernateDailySame, BootDailySame, ShutdownDailySame };
+        var step = 7.5f * Dpi;
+        var startX = Width / 2f - (states.Length - 1) * step / 2f - 2f * Dpi;
+        for (var i = 0; i < states.Length; i++)
         {
-            var on = i == 0 ? BootDailySame : ShutdownDailySame;
-            var dot = new RectangleF(Width / 2f - 7f * Dpi + i * 9f * Dpi, dotY, 4f * Dpi, 4f * Dpi);
-            using var b = new SolidBrush(on ? Theme.Accent : Theme.CardBorderStrong);
+            var dot = new RectangleF(startX + i * step, dotY, 4f * Dpi, 4f * Dpi);
+            using var b = new SolidBrush(states[i] ? Theme.Accent : Theme.CardBorderStrong);
             g.FillEllipse(b, dot);
         }
     }
@@ -880,12 +884,14 @@ internal sealed class CheckRow : ThemedControl
 
 internal sealed class QuickPopup : Form
 {
+    private bool _restartDailySame;
+    private bool _hibernateDailySame;
     private bool _bootDailySame;
     private bool _shutdownDailySame;
     private int _hoverRow = -1;
     private float DpiS => DeviceDpi / 96f;
 
-    public QuickPopup(bool bootDailySame, bool shutdownDailySame)
+    public QuickPopup(bool restartDailySame, bool hibernateDailySame, bool bootDailySame, bool shutdownDailySame)
     {
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
@@ -893,13 +899,17 @@ internal sealed class QuickPopup : Form
         BackColor = Theme.Card;
         DoubleBuffered = true;
         KeyPreview = true;
+        _restartDailySame = restartDailySame;
+        _hibernateDailySame = hibernateDailySame;
         _bootDailySame = bootDailySame;
         _shutdownDailySame = shutdownDailySame;
         var s = DpiS;
-        ClientSize = new Size((int)(236 * s), (int)(146 * s));
+        ClientSize = new Size((int)(236 * s), (int)(224 * s));
         SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
     }
 
+    public event Action<bool> RestartDailySameChanged;
+    public event Action<bool> HibernateDailySameChanged;
     public event Action<bool> BootDailySameChanged;
     public event Action<bool> ShutdownDailySameChanged;
 
@@ -947,7 +957,9 @@ internal sealed class QuickPopup : Form
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
-        var row = RowRect(0).Contains(e.Location) ? 0 : RowRect(1).Contains(e.Location) ? 1 : -1;
+        var row = -1;
+        for (var i = 0; i < 4; i++)
+            if (RowRect(i).Contains(e.Location)) { row = i; break; }
         if (row != _hoverRow) { _hoverRow = row; Invalidate(); }
         base.OnMouseMove(e);
     }
@@ -958,17 +970,30 @@ internal sealed class QuickPopup : Form
     {
         if (e.Button == MouseButtons.Left)
         {
-            if (RowRect(0).Contains(e.Location))
+            for (var i = 0; i < 4; i++)
             {
-                _bootDailySame = !_bootDailySame;
+                if (!RowRect(i).Contains(e.Location)) continue;
+                switch (i)
+                {
+                    case 0:
+                        _restartDailySame = !_restartDailySame;
+                        RestartDailySameChanged?.Invoke(_restartDailySame);
+                        break;
+                    case 1:
+                        _hibernateDailySame = !_hibernateDailySame;
+                        HibernateDailySameChanged?.Invoke(_hibernateDailySame);
+                        break;
+                    case 2:
+                        _bootDailySame = !_bootDailySame;
+                        BootDailySameChanged?.Invoke(_bootDailySame);
+                        break;
+                    default:
+                        _shutdownDailySame = !_shutdownDailySame;
+                        ShutdownDailySameChanged?.Invoke(_shutdownDailySame);
+                        break;
+                }
                 Invalidate();
-                BootDailySameChanged?.Invoke(_bootDailySame);
-            }
-            else if (RowRect(1).Contains(e.Location))
-            {
-                _shutdownDailySame = !_shutdownDailySame;
-                Invalidate();
-                ShutdownDailySameChanged?.Invoke(_shutdownDailySame);
+                break;
             }
         }
         base.OnMouseDown(e);
@@ -983,10 +1008,12 @@ internal sealed class QuickPopup : Form
         Theme.FillRound(g, full, 12f * s, Theme.Card);
         Theme.DrawRound(g, full, 12f * s, Theme.CardBorderStrong, 1f);
         Theme.DrawText(g, "快捷设置", Theme.Font9, Theme.Muted, new RectangleF(14 * s, 10 * s, 120 * s, 20 * s), StringAlignment.Near);
-        DrawRow(g, 0, "开机时间每天一致", "7 天开机使用同一时间");
-        DrawRow(g, 1, "关机时间每天一致", "7 天关机使用同一时间");
-        Theme.DrawText(g, "提示：同刻可能刚开机就关机", Theme.Font8, Theme.Warn,
-            new RectangleF(14 * s, 118 * s, 212 * s, 18 * s), StringAlignment.Near);
+        DrawRow(g, 0, "重启时间每天一致", "7 天重启使用同一时间");
+        DrawRow(g, 1, "休眠时间每天一致", "7 天休眠使用同一时间");
+        DrawRow(g, 2, "唤醒时间每天一致", "7 天唤醒使用同一时间");
+        DrawRow(g, 3, "关机时间每天一致", "7 天关机使用同一时间");
+        Theme.DrawText(g, "提示：同刻可能刚唤醒又休眠/关机", Theme.Font8, Theme.Warn,
+            new RectangleF(14 * s, 180 * s, 212 * s, 18 * s), StringAlignment.Near);
     }
 
     private void DrawRow(Graphics g, int index, string title, string subtitle)
@@ -995,8 +1022,9 @@ internal sealed class QuickPopup : Form
         var row = RowRect(index);
         if (_hoverRow == index) Theme.FillRound(g, row, 7f * s, Color.FromArgb(248, 250, 252));
         var box = new RectangleF(row.X + 4 * s, row.Y + (row.Height - 15 * s) / 2f, 15 * s, 15 * s);
-        Theme.DrawCheck(g, box, index == 0 ? _bootDailySame : _shutdownDailySame);
-        var color = (index == 0 ? _bootDailySame : _shutdownDailySame) ? Theme.Text : Theme.SubText;
+        var on = index switch { 0 => _restartDailySame, 1 => _hibernateDailySame, 2 => _bootDailySame, _ => _shutdownDailySame };
+        Theme.DrawCheck(g, box, on);
+        var color = on ? Theme.Text : Theme.SubText;
         Theme.DrawText(g, title, Theme.Font9_5, color, new RectangleF(row.X + 27 * s, row.Y + 2 * s, row.Width - 30 * s, 17 * s), StringAlignment.Near);
         Theme.DrawText(g, subtitle, Theme.Font8, Theme.Muted, new RectangleF(row.X + 27 * s, row.Y + 17 * s, row.Width - 30 * s, 13 * s), StringAlignment.Near);
     }

@@ -42,20 +42,30 @@ internal sealed class ScheduleConfig
     [JsonIgnore]
     public int EnabledCount => Days.Count(d => d.Enabled);
     public DaySetting this[int index] => Days[index];
+
+    public ScheduleConfig Clone() => new()
+    {
+        Days = Days.Select(d => d.Clone()).ToList()
+    };
 }
 
 internal sealed class AppConfig
 {
-    public int SchemaVersion { get; set; } = 2;
+    public int SchemaVersion { get; set; } = 3;
     public bool MasterEnabled { get; set; }
-    public bool BootEnabled { get; set; } = true;
-    public bool ShutdownEnabled { get; set; } = true;
+    public bool BootEnabled { get; set; }
+    public bool RestartEnabled { get; set; }
+    public bool HibernateEnabled { get; set; }
+    public bool ShutdownEnabled { get; set; }
     public ScheduleConfig Boot { get; set; } = ScheduleConfig.CreateDefault(7, 0);
+    public ScheduleConfig Restart { get; set; } = ScheduleConfig.CreateDefault(12, 0);
+    public ScheduleConfig Hibernate { get; set; } = ScheduleConfig.CreateDefault(23, 0);
     public ScheduleConfig Shutdown { get; set; } = ScheduleConfig.CreateDefault(23, 0);
-    /// <summary>7 天开机时间保持同一时刻（不影响关机时间）。</summary>
+    /// <summary>7 天开机/唤醒时间保持同一时刻（不影响其他动作）。</summary>
     public bool BootDailySame { get; set; }
-
-    /// <summary>7 天关机时间保持同一时刻（不影响开机时间）。</summary>
+    public bool RestartDailySame { get; set; }
+    public bool HibernateDailySame { get; set; }
+    /// <summary>7 天关机时间保持同一时刻（不影响其他动作）。</summary>
     public bool ShutdownDailySame { get; set; }
 
     /// <summary>关机前 1 分钟弹出倒计时窗口，允许取消。</summary>
@@ -84,6 +94,49 @@ internal sealed class AppConfig
 
     public ScheduleConfig GetSchedule(bool boot) => boot ? Boot : Shutdown;
 
+    /// <summary>0=重启, 1=休眠, 2=唤醒, 3=关机。</summary>
+    public ScheduleConfig GetSchedule(int index) => index switch
+    {
+        0 => Restart,
+        1 => Hibernate,
+        2 => Boot,
+        _ => Shutdown
+    };
+
+    public bool GetDailySame(int index) => index switch
+    {
+        0 => RestartDailySame,
+        1 => HibernateDailySame,
+        2 => BootDailySame,
+        _ => ShutdownDailySame
+    };
+
+    public void SetDailySame(int index, bool on)
+    {
+        if (index == 0) RestartDailySame = on;
+        else if (index == 1) HibernateDailySame = on;
+        else if (index == 2) BootDailySame = on;
+        else ShutdownDailySame = on;
+        ApplyLinkInvariants();
+    }
+
+    public bool IsActionEnabled(int index) => index switch
+    {
+        0 => RestartEnabled,
+        1 => HibernateEnabled,
+        2 => BootEnabled,
+        _ => ShutdownEnabled
+    };
+
+    public void SetActionEnabled(int index, bool on)
+    {
+        if (index == 0) RestartEnabled = on;
+        else if (index == 1) HibernateEnabled = on;
+        else if (index == 2) BootEnabled = on;
+        else ShutdownEnabled = on;
+        if (!HibernateEnabled) BootEnabled = false;
+    }
+
     /// <summary>有开机计划时，定时关机的实际动作是否改为休眠。</summary>
     [JsonIgnore]
     public bool ShouldHibernateForBoot =>
@@ -91,10 +144,28 @@ internal sealed class AppConfig
 
     public void Normalize()
     {
+        if (SchemaVersion < 3)
+        {
+            // v0.1 只有“开机/关机”两个计划：把原来的关机动作迁移成独立的休眠计划，
+            // 这样“唤醒”仍然有休眠可依赖，也不会和新的关机计划同刻冲突。
+            Hibernate = (Shutdown ?? ScheduleConfig.CreateDefault(23, 0)).Clone();
+            Restart = ScheduleConfig.CreateDefault(12, 0);
+            RestartEnabled = false;
+            HibernateEnabled = HibernateOnShutdown;
+            ShutdownEnabled = !HibernateOnShutdown;
+            RestartDailySame = false;
+            HibernateDailySame = false;
+            SchemaVersion = 3;
+        }
+        Restart ??= ScheduleConfig.CreateDefault(12, 0);
+        Hibernate ??= ScheduleConfig.CreateDefault(23, 0);
         Boot ??= ScheduleConfig.CreateDefault(7, 0);
         Shutdown ??= ScheduleConfig.CreateDefault(23, 0);
+        Restart.Normalize(12, 0);
+        Hibernate.Normalize(23, 0);
         Boot.Normalize(7, 0);
         Shutdown.Normalize(23, 0);
+        if (!HibernateEnabled) BootEnabled = false;
         QqNumber = (QqNumber ?? "").Trim();
         SnowLumaPort = SnowLumaPort is > 0 and < 65536 ? SnowLumaPort : 5099;
         SurfCorePort = SurfCorePort is > 0 and < 65536 ? SurfCorePort : 3100;
@@ -105,7 +176,9 @@ internal sealed class AppConfig
 
     public void ApplyLinkInvariants()
     {
-        // 只统一各自 7 天的时间；开机与关机互不相等，避免“刚开机就关机”。
+        // 每个动作各自统一 7 天时间；不同动作之间互不影响。
+        if (RestartDailySame) UnifyDays(Restart);
+        if (HibernateDailySame) UnifyDays(Hibernate);
         if (BootDailySame) UnifyDays(Boot);
         if (ShutdownDailySame) UnifyDays(Shutdown);
     }
@@ -250,7 +323,9 @@ internal static class ConfigStore
             {
                 var json = File.ReadAllText(ConfigPath);
                 var cfg = JsonSerializer.Deserialize<AppConfig>(json, JsonOptions) ?? new AppConfig();
+                var migrated = cfg.SchemaVersion < 3;
                 cfg.Normalize();
+                if (migrated) Save(cfg);
                 return cfg;
             }
         }
