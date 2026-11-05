@@ -31,13 +31,11 @@ internal sealed class ShutdownGuardForm : Form
     private const uint LlmhfInjected = 0x01;
     private const uint LlmhfLowerIlInjected = 0x02;
 
-    public ShutdownGuardForm(bool demo = false)
+    public ShutdownGuardForm(bool demo = false, bool hibernate = false)
     {
         _demo = demo;
         _cfg = ConfigStore.Load();
-        // “休眠”现在是独立的定时动作；关机守卫只负责真正的关机，
-        // 避免旧的自动改休眠逻辑和新的休眠计划重复执行。
-        _hibernate = false;
+        _hibernate = hibernate;
         if (demo)
         {
             _shutdownAt = DateTime.Now.AddSeconds(9);
@@ -47,7 +45,8 @@ internal sealed class ShutdownGuardForm : Form
         else
         {
             var dayIndex = ((int)DateTime.Today.DayOfWeek + 6) % 7;
-            var day = _cfg.Shutdown.Days[dayIndex];
+            var schedule = _hibernate ? _cfg.Hibernate : _cfg.Shutdown;
+            var day = schedule.Days[dayIndex];
             _shutdownAt = DateTime.Today.AddHours(day.Hour).AddMinutes(day.Minute);
             if (_shutdownAt < DateTime.Now.AddSeconds(-2))
                 _shutdownAt = DateTime.Now.AddSeconds(3);

@@ -35,6 +35,11 @@ internal static class Program
                 Application.Run(new ShutdownGuardForm(false));
                 return 0;
             }
+            if (HasFlag(args, "--hibernate-guard"))
+            {
+                Application.Run(new ShutdownGuardForm(false, true));
+                return 0;
+            }
             if (HasFlag(args, "--guard-demo"))
             {
                 Application.Run(new ShutdownGuardForm(true));

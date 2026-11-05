@@ -226,18 +226,19 @@ internal static class Scheduler
                         new XElement(Ns + "DaysOfWeek", new XElement(Ns + DayElement(dow))))));
         }
 
-        var useGuard = action == ScheduledAction.Shutdown && (cfg.ShutdownCountdown || cfg.OnlineNoShutdown);
+        var useGuard = action is ScheduledAction.Shutdown or ScheduledAction.Hibernate &&
+                       (cfg.ShutdownCountdown || cfg.OnlineNoShutdown);
         var command = action switch
         {
             ScheduledAction.Restart => "shutdown.exe",
-            ScheduledAction.Hibernate => "shutdown.exe",
+            ScheduledAction.Hibernate => useGuard ? StartupRegistration.ExePath : "shutdown.exe",
             ScheduledAction.Wake => "cmd.exe",
             _ => useGuard ? StartupRegistration.ExePath : "shutdown.exe"
         };
         var arguments = action switch
         {
             ScheduledAction.Restart => "/r /t 0",
-            ScheduledAction.Hibernate => "/h",
+            ScheduledAction.Hibernate => useGuard ? "--hibernate-guard" : "/h",
             ScheduledAction.Wake => "/c exit",
             _ => useGuard ? "--shutdown-guard" : "/s /t 0"
         };

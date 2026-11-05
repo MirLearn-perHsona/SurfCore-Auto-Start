@@ -481,8 +481,8 @@ internal sealed class MainForm : Form
 
         _masterToggle.Bounds = R(40, 76, 44, 24);
         _restartToggle.Bounds = R(280, 59, 30, 17);
-        _wakeToggle.Bounds = R(278, 97, 26, 15);
-        _hibernateToggle.Bounds = R(362, 97, 26, 15);
+        _hibernateToggle.Bounds = R(278, 97, 26, 15);
+        _wakeToggle.Bounds = R(362, 97, 26, 15);
         _shutdownToggle.Bounds = R(450, 97, 26, 15);
         _powerStrip.Bounds = R(528, 52, 44, 70);
 
@@ -619,7 +619,7 @@ internal sealed class MainForm : Form
                 new[] { "关机倒计时提醒", "在线时不关机" },
                 new[] { "关机前 1 分钟弹窗，可取消", "最近 3 分钟有键鼠操作则跳过" },
                 new[] { _cfg.ShutdownCountdown, _cfg.OnlineNoShutdown },
-                "仅对定时关机生效");
+                "同时作用于定时关机与休眠");
             popup.OptionChanged += OnPowerOptionChanged;
             popup.FormClosed += (_, _) => { if (ReferenceEquals(_powerPopup, popup)) _powerPopup = null; };
             _powerPopup = popup;
@@ -871,13 +871,13 @@ internal sealed class MainForm : Form
 
         using (var pen = new Pen(Theme.CardBorder, 1f * s))
             g.DrawLine(pen, L(356), L(94), L(356), L(116));
-        Theme.DrawText(g, "唤醒", Theme.Font9, Theme.Text, R(306, 89, 44, 16));
-        Theme.DrawText(g, _cfg.Boot.Days[_selectedDay].TimeText, Theme.Font8,
-            _cfg.BootEnabled && _cfg.HibernateEnabled && _cfg.MasterEnabled ? Theme.SubText : Theme.Muted,
-            R(306, 105, 44, 13));
-        Theme.DrawText(g, "休眠", Theme.Font9, Theme.Text, R(386, 89, 44, 16));
+        Theme.DrawText(g, "休眠", Theme.Font9, Theme.Text, R(306, 89, 44, 16));
         Theme.DrawText(g, _cfg.Hibernate.Days[_selectedDay].TimeText, Theme.Font8,
             _cfg.HibernateEnabled && _cfg.MasterEnabled ? Theme.SubText : Theme.Muted,
+            R(306, 105, 44, 13));
+        Theme.DrawText(g, "唤醒", Theme.Font9, Theme.Text, R(386, 89, 44, 16));
+        Theme.DrawText(g, _cfg.Boot.Days[_selectedDay].TimeText, Theme.Font8,
+            _cfg.BootEnabled && _cfg.HibernateEnabled && _cfg.MasterEnabled ? Theme.SubText : Theme.Muted,
             R(386, 105, 44, 13));
 
         Theme.DrawText(g, "关机", Theme.Font9, Theme.Text, R(478, 89, 40, 16));
@@ -929,7 +929,7 @@ internal sealed class MainForm : Form
             g.DrawLine(pen, L(32), L(22), L(35), L(23));
         }
         Theme.DrawText(g, "SurfCore Auto-start", Theme.Font11B, Theme.Text, R(52, 11, 176, 22));
-        Theme.DrawText(g, "v0.1.2", Theme.Font8, Theme.Muted, R(226, 15, 48, 16));
+        Theme.DrawText(g, "v0.1", Theme.Font8, Theme.Muted, R(226, 15, 48, 16));
     }
 
     private void DrawStatus(Graphics g, float s)

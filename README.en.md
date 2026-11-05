@@ -17,7 +17,7 @@ Its **scheduled power on/off feature works completely standalone** — it does n
 - **Four independent weekly schedules**: restart, hibernate, wake and shutdown; each has its own weekday/hour/minute settings selected with the mouse wheel and confirmed with a left click.
 - **Quick setup**: apply the same time to all 7 days for restart, hibernate, wake or shutdown independently.
 - **Wake depends on hibernate**: the wake toggle can only be enabled while hibernate is on; turning hibernate off clears and greys out wake, so no wake task can exist without a preceding hibernate.
-- **Shutdown protection**: a cancellable 1-minute countdown before shutdown; shutdown is skipped when real keyboard/mouse activity occurred in the last 3 minutes.
+- **Shutdown protection**: a cancellable 1-minute countdown before shutdown; shutdown is skipped when real keyboard/mouse activity occurred in the last 3 minutes. The same options apply to scheduled hibernate as well.
 - **SurfCore auto-start**: with the toggle enabled and the SnowLuma console token and QQ number filled in, start DSH → SurfCore bridge → SnowLuma → OneBot → QQ injection in the correct order. It is disabled and greyed out while the master switch is off.
 - **Compact UI**: a 600×540 light, borderless window with a master switch, a restart strip, a combined hibernate/wake card and a shutdown card, plus four time-setting tabs.
 
@@ -30,7 +30,11 @@ Its **scheduled power on/off feature works completely standalone** — it does n
 
 > Do not double-click the exe directly from a chat app, a web page, or the H: drive — it may not receive administrator rights and cannot create scheduled tasks. Use the desktop shortcut instead.
 
-## Hibernate and wake limitations
+## The program cannot power on a fully shut-down PC
+
+> **Important: this program cannot implement "power on after a full shutdown".**  
+> Windows Task Scheduler can only wake the PC from **sleep/hibernation**. Once the PC is fully shut down (S5), only the motherboard can power it on.  
+> If you need a schedule that powers on after a full shutdown, you must enable **RTC Wake / Resume by Alarm** in **BIOS/UEFI** yourself — **this program cannot do it**.
 
 Windows Task Scheduler can wake the PC from **sleep / hibernation**, but it cannot power on a motherboard that is fully shut down.
 
