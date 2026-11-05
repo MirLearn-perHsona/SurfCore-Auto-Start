@@ -6,7 +6,7 @@
 
 [English](README.en.md) | 简体中文
 
-**SurfCore Auto-start** 是一个 Windows 定时开关机小工具，用于让 DeepSeek Harness 的 **SurfCore** 插件更自动化：开机后按顺序拉起 DSH、SurfCore、SnowLuma，并自动登录控制台、注入指定 QQ 进程。
+**SurfCore Auto-start** 是一个 Windows 自动化程序，用于让 DeepSeek Harness 的 **SurfCore** 插件更自动化：开机后按顺序拉起 DSH、SurfCore、SnowLuma，并自动登录控制台、注入指定 QQ 进程。
 
 它的**定时开关机功能可以完全单独使用**，不依赖 DeepSeek Harness 或 SurfCore。
 
