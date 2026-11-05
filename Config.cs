@@ -63,6 +63,9 @@ internal sealed class AppConfig
 
     /// <summary>关机前检测最近 3 分钟是否有键鼠输入，有人在使用则跳过本次关机。</summary>
     public bool OnlineNoShutdown { get; set; }
+
+    /// <summary>定时关机改为休眠；Windows 计划任务只能从睡眠/休眠唤醒，完全关机无法自动开机。</summary>
+    public bool HibernateOnShutdown { get; set; } = true;
     public bool SurfCoreAutoStart { get; set; }
     public string SnowLumaPasswordProtected { get; set; } = "";
     public string QqNumber { get; set; } = "";
@@ -80,6 +83,11 @@ internal sealed class AppConfig
     public bool LastEditingBoot { get; set; } = true;
 
     public ScheduleConfig GetSchedule(bool boot) => boot ? Boot : Shutdown;
+
+    /// <summary>有开机计划时，定时关机的实际动作是否改为休眠。</summary>
+    [JsonIgnore]
+    public bool ShouldHibernateForBoot =>
+        HibernateOnShutdown && BootEnabled && Boot != null && Boot.Days.Any(d => d.Enabled);
 
     public void Normalize()
     {

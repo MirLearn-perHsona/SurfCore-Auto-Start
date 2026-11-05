@@ -33,6 +33,8 @@ Its **scheduled power on/off feature works completely standalone** — it does n
 
 Windows Task Scheduler can wake the PC from **sleep / hibernation**, but it cannot power on a motherboard that is fully shut down. For a full power-on schedule, configure RTC Wake / Resume by Alarm in the BIOS/UEFI.
 
+When a power-on schedule is enabled, the app changes scheduled shutdown to **hibernation** by default (toggle it in “Shutdown options”), so the next power-on can wake the PC; a fully shut-down PC cannot be started automatically.
+
 Check wake timers with:
 
 ```powershell

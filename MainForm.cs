@@ -86,7 +86,7 @@ internal sealed class MainForm : Form
         _hourWheel = new ValueWheel { Surface = Theme.Card, Min = 0, Max = 23, Value = 7 };
         _minuteWheel = new ValueWheel { Surface = Theme.Card, Min = 0, Max = 59, Value = 0 };
         _quickStrip = new QuickStrip { Surface = Theme.Card };
-        _powerStrip = new OptionStrip { Surface = Theme.Card, Label = "关机选项", Options = new bool[2] };
+        _powerStrip = new OptionStrip { Surface = Theme.Card, Label = "关机选项", Options = new bool[3] };
         _surfToggle = new ToggleSwitch { Surface = Theme.Card, Size = new Size(40, 22) };
         _launchButton = new FlatButton { Text = "立即启动", Style = FlatButtonStyle.Soft, Surface = Theme.Card, Radius = 8 };
         _deleteButton = new FlatButton { Text = "卸载", Style = FlatButtonStyle.Danger, Surface = Theme.Bg, Radius = 6 };
@@ -417,7 +417,7 @@ internal sealed class MainForm : Form
         _shutdownToggle.Checked = _cfg.ShutdownEnabled;
         _tab.SelectedIndex = _editingBoot ? 0 : 1;
         _surfToggle.Checked = _cfg.SurfCoreAutoStart;
-        _powerStrip.Options = new[] { _cfg.ShutdownCountdown, _cfg.OnlineNoShutdown };
+        _powerStrip.Options = new[] { _cfg.ShutdownCountdown, _cfg.OnlineNoShutdown, _cfg.HibernateOnShutdown };
         _passwordBox.Text = _cfg.SnowLumaPassword;
         _qqBox.Text = _cfg.QqNumber;
         _expanded = _cfg.SurfCoreAutoStart || _previewExpanded;
@@ -568,10 +568,10 @@ internal sealed class MainForm : Form
             if (_powerPopup != null && !_powerPopup.IsDisposed) { _powerPopup.Close(); _powerPopup = null; }
             var popup = new OptionsPopup(
                 "关机选项",
-                new[] { "关机倒计时提醒", "在线时不关机" },
-                new[] { "关机前 1 分钟弹窗，可取消", "最近 3 分钟有键鼠操作则跳过" },
-                new[] { _cfg.ShutdownCountdown, _cfg.OnlineNoShutdown },
-                "仅对定时关机生效");
+                new[] { "关机倒计时提醒", "在线时不关机", "关机改为休眠" },
+                new[] { "关机前 1 分钟弹窗，可取消", "最近 3 分钟有键鼠操作则跳过", "休眠后才能被定时唤醒；完全关机无法自动开机" },
+                new[] { _cfg.ShutdownCountdown, _cfg.OnlineNoShutdown, _cfg.HibernateOnShutdown },
+                "仅对定时关机生效；有开机计划时建议保持休眠");
             popup.OptionChanged += OnPowerOptionChanged;
             popup.FormClosed += (_, _) => { if (ReferenceEquals(_powerPopup, popup)) _powerPopup = null; };
             _powerPopup = popup;
@@ -587,12 +587,16 @@ internal sealed class MainForm : Form
     {
         if (index == 0) _cfg.ShutdownCountdown = on;
         else if (index == 1) _cfg.OnlineNoShutdown = on;
-        _powerStrip.Options = new[] { _cfg.ShutdownCountdown, _cfg.OnlineNoShutdown };
+        else if (index == 2) _cfg.HibernateOnShutdown = on;
+        _powerStrip.Options = new[] { _cfg.ShutdownCountdown, _cfg.OnlineNoShutdown, _cfg.HibernateOnShutdown };
         ScheduleSave();
         SyncScheduleAsync();
-        SetStatus(index == 0
-            ? (on ? "已启用：关机前 1 分钟提醒，可取消" : "已关闭：关机前不再提醒")
-            : (on ? "已启用：最近 3 分钟有人操作则跳过关机" : "已关闭：在线时也按时关机"));
+        SetStatus(index switch
+        {
+            0 => on ? "已启用：关机前 1 分钟提醒，可取消" : "已关闭：关机前不再提醒",
+            1 => on ? "已启用：最近 3 分钟有人操作则跳过关机" : "已关闭：在线时也按时关机",
+            _ => on ? "已启用：定时关机改为休眠，可被定时开机唤醒" : "已关闭：定时关机为完全关机，无法自动开机"
+        });
     }
 
     private void OnBootDailySameChanged(bool on)
@@ -868,7 +872,7 @@ internal sealed class MainForm : Form
             g.DrawLine(pen, L(32), L(22), L(35), L(23));
         }
         Theme.DrawText(g, "SurfCore Auto-start", Theme.Font11B, Theme.Text, R(52, 11, 176, 22));
-        Theme.DrawText(g, "v0.1", Theme.Font8, Theme.Muted, R(226, 15, 48, 16));
+        Theme.DrawText(g, "v0.1.1", Theme.Font8, Theme.Muted, R(226, 15, 48, 16));
     }
 
     private void DrawStatus(Graphics g, float s)

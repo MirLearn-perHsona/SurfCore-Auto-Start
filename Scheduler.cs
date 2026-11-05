@@ -39,6 +39,7 @@ internal static class Scheduler
 
             if (bootWanted)
             {
+                EnsureWakeSupport();
                 var r = CreateTask(true, cfg.Boot, cfg);
                 if (!r.ok) errors.Add("开机任务: " + r.message);
                 else result.BootActive = true;
@@ -66,7 +67,7 @@ internal static class Scheduler
             if (!result.BootActive) result.BootActive = TaskExists(BootTaskName);
             if (!result.ShutdownActive) result.ShutdownActive = TaskExists(ShutdownTaskName);
             Log.Info($"Scheduler.Apply master={cfg.MasterEnabled} boot={cfg.BootEnabled} shutdown={cfg.ShutdownEnabled} " +
-                     $"bootActive={result.BootActive} shutdownActive={result.ShutdownActive} msg={result.Message}");
+                     $"hibernate={cfg.ShouldHibernateForBoot} bootActive={result.BootActive} shutdownActive={result.ShutdownActive} msg={result.Message}");
         }
         catch (Exception ex)
         {
@@ -172,12 +173,15 @@ internal static class Scheduler
                         new XElement(Ns + "DaysOfWeek", new XElement(Ns + DayElement(dow))))));
         }
 
+        var hibernate = !boot && cfg.ShouldHibernateForBoot;
         var description = boot
             ? "SurfCore Auto-start 定时开机（从睡眠/休眠唤醒，并补跑错过的事件）"
-            : "SurfCore Auto-start 定时关机";
+            : hibernate
+                ? "SurfCore Auto-start 定时关机（休眠，以便下次定时唤醒）"
+                : "SurfCore Auto-start 定时关机";
         var useGuard = !boot && (cfg.ShutdownCountdown || cfg.OnlineNoShutdown);
         var command = boot ? "cmd.exe" : useGuard ? StartupRegistration.ExePath : "shutdown.exe";
-        var arguments = boot ? "/c exit" : useGuard ? "--shutdown-guard" : "/s /t 0";
+        var arguments = boot ? "/c exit" : useGuard ? "--shutdown-guard" : hibernate ? "/h" : "/s /t 0";
 
         var doc = new XDocument(
             new XDeclaration("1.0", "UTF-16", "yes"),
@@ -207,7 +211,9 @@ internal static class Scheduler
                     new XElement(Ns + "Enabled", "true"),
                     new XElement(Ns + "Hidden", "false"),
                     new XElement(Ns + "RunOnlyIfIdle", "false"),
-                    new XElement(Ns + "WakeToRun", "true"),
+                    // 只让开机任务占用唤醒定时器；关机任务若也唤醒，会抢占唯一下一个唤醒点，
+                    // 可能让休眠中的电脑在关机时刻先醒来、随后又休眠，反而丢失开机唤醒。
+                    new XElement(Ns + "WakeToRun", boot ? "true" : "false"),
                     new XElement(Ns + "ExecutionTimeLimit", "PT0S"),
                     new XElement(Ns + "Priority", "7")),
                 new XElement(Ns + "Actions", new XAttribute("Context", "Author"),
@@ -233,6 +239,41 @@ internal static class Scheduler
         var detail = Trim(r.output);
         if (!string.IsNullOrWhiteSpace(comError)) detail += "；COM: " + comError;
         return (false, detail);
+    }
+
+    /// <summary>确保系统允许休眠，并允许计划任务唤醒电脑；失败只记日志，不阻止任务创建。</summary>
+    private static void EnsureWakeSupport()
+    {
+        RunTool("powercfg.exe", "/hibernate on", 15000);
+        RunTool("powercfg.exe", "/SETACVALUEINDEX SCHEME_CURRENT SUB_SLEEP RTCWAKE 1", 10000);
+        RunTool("powercfg.exe", "/SETDCVALUEINDEX SCHEME_CURRENT SUB_SLEEP RTCWAKE 1", 10000);
+        RunTool("powercfg.exe", "/SETACTIVE SCHEME_CURRENT", 10000);
+    }
+
+    private static void RunTool(string file, string args, int timeoutMs)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo(file, args)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            using var p = Process.Start(psi);
+            if (p == null) return;
+            var output = p.StandardOutput.ReadToEnd();
+            var error = p.StandardError.ReadToEnd();
+            p.WaitForExit(timeoutMs);
+            if (p.ExitCode != 0)
+                Log.Warn($"{file} {args} -> {p.ExitCode}: {(output + error).Trim()}");
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"{file} {args} 失败: {ex.Message}");
+        }
     }
 
     private static DateTime NextOccurrence(DayOfWeek day, int hour, int minute, int leadSeconds)

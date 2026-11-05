@@ -8,6 +8,7 @@ internal sealed class ShutdownGuardForm : Form
 {
     private readonly AppConfig _cfg;
     private readonly bool _demo;
+    private readonly bool _hibernate;
     private readonly DateTime _shutdownAt;
     private readonly System.Windows.Forms.Timer _timer;
     private readonly FlatButton _cancelButton;
@@ -34,6 +35,7 @@ internal sealed class ShutdownGuardForm : Form
     {
         _demo = demo;
         _cfg = ConfigStore.Load();
+        _hibernate = !demo && _cfg.ShouldHibernateForBoot;
         if (demo)
         {
             _shutdownAt = DateTime.Now.AddSeconds(9);
@@ -188,7 +190,7 @@ internal sealed class ShutdownGuardForm : Form
         if (_done) return;
         _done = true;
         _timer.Stop();
-        Log.Info("执行定时关机");
+        Log.Info(_hibernate ? "执行定时休眠（用于下次定时开机）" : "执行定时关机");
         if (_demo)
         {
             Close();
@@ -196,7 +198,7 @@ internal sealed class ShutdownGuardForm : Form
         }
         try
         {
-            Process.Start(new ProcessStartInfo("shutdown.exe", "/s /t 0")
+            Process.Start(new ProcessStartInfo("shutdown.exe", _hibernate ? "/h" : "/s /t 0")
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -245,9 +247,9 @@ internal sealed class ShutdownGuardForm : Form
         }
 
         Theme.DrawText(g, "SurfCore Auto-start", Theme.Font9, Theme.Muted, R(24, 16, 200, 18), StringAlignment.Near);
-        Theme.DrawText(g, "定时关机", Theme.Font12B, Theme.Text, R(24, 38, 200, 24), StringAlignment.Near);
+        Theme.DrawText(g, _hibernate ? "定时休眠" : "定时关机", Theme.Font12B, Theme.Text, R(24, 38, 200, 24), StringAlignment.Near);
         Theme.DrawText(g, _secondsLeft.ToString("00"), Theme.Font16B, Theme.AccentDark, R(238, 28, 138, 56), StringAlignment.Center);
-        Theme.DrawText(g, "秒后自动关机", Theme.Font9_5, Theme.SubText, R(24, 82, 220, 20), StringAlignment.Near);
+        Theme.DrawText(g, _hibernate ? "秒后自动休眠（定时开机）" : "秒后自动关机", Theme.Font9_5, Theme.SubText, R(24, 82, 220, 20), StringAlignment.Near);
         Theme.DrawText(g, "点击“取消关机”可以取消本次关机", Theme.Font8, Theme.Muted, R(24, 106, 352, 18), StringAlignment.Near);
     }
 
